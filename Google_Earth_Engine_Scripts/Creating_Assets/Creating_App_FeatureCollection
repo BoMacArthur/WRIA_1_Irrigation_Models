@@ -1,0 +1,146 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var fields = ee.FeatureCollection("projects/ee-bomacarthur/assets/All_Fields_All_Years/SWBR_13_best_model_results_all_fields");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+print(fields.first().propertyNames());
+print(fields.aggregate_array('CropGroup').distinct());
+print(fields.aggregate_array('IrrigationType').distinct());
+print(fields.filter(ee.Filter.eq('IrrigationType', 'Center Pivot')));
+
+Map.addLayer(fields.filter(ee.Filter.eq('Irrigation', 'Center Pivot')));
+
+var fieldsClean = fields.map(function(feature){
+  return feature.set({
+      'Area_acres': feature.getNumber('ExactAcres'),
+      'Area_sq_meters': feature.getNumber('Area'),
+      'Crop_Group': feature.getString('CropGroup'),
+      'Crop_Type': feature.getString('CropType'),
+      'Date': ee.Date(feature.getString('DateStart')).format('MM-yyyy'),
+      'ET_actual_mm': feature.getNumber('ETa'),
+      'ET_actual_in': feature.getNumber('ETa').divide(25.4),
+      'Irrigation_depth_mm': feature.getNumber('irrigationDepthMM'),
+      'Irrigation_depth_inches': feature.getNumber('irrigationDepthIN'),
+      'Irrigation_Type': feature.getString('IrrigationType'),
+      'Irrigation_Volume_cubic_meters': feature.getNumber('irrigationVolumeM3'),
+      'Irrigtion_Volume_1000gal': feature.getNumber('irrigationVolume1000Gal').abs(),
+      'Precipitation_mm': feature.getNumber('P'),
+      'Precipitation_Effective_mm': feature.getNumber('Peff'),
+      'Precipitation_in': feature.getNumber('P').divide(25.4),
+      'Precipitation_Effective_in': feature.getNumber('Peff').divide(25.4),
+      'Water_Balance_mm': feature.getNumber('wb'),
+      'Water_Balance_Adjusted_mm': feature.getNumber('wbA'),
+      'Water_Balance_Residual_mm': feature.getNumber('wbRn1Adj')
+    }).select([
+      'Area_acres',
+      'Area_sq_meters',
+      'Crop_Group',
+      'Crop_Type',
+      'DataSource',
+      'Date',
+      'ET_actual_mm',
+      'ET_actual_in',
+      'ET_from_irrigation_mm',
+      'Irrigation_Type',
+      'Irrigation_depth_mm',
+      'Irrigation_depth_inches',
+      'Irrigation_Volume_cubic_meters',
+      'Irrigtion_Volume_1000gal',
+      'LastSurveyDate',
+      'Precipitation_mm',
+      'Precipitation_Effective_mm',
+      'Precipitation_in',
+      'Precipitation_Effective_in',
+      'Water_Balance_mm',
+      'Water_Balance_Adjusted_mm',
+      'Water_Balance_Residual_mm',
+      'system:time_start',
+      'system:time_end'
+    ]);
+});
+
+// print(fieldsClean.filterDate('2023-06-01', '2023-07-01').limit(10));
+
+var fieldsClean2 = ee.FeatureCollection([
+  fieldsClean.filter(ee.Filter.eq('Irrigation_Type', 'Hand/Sprinkler'))
+              .map(function(feature){
+                      return feature.set({'Irrigation_Type_1': 'Hand',
+                                          'Irrigation_Type_2': 'Sprinkler'});
+              }),
+  fieldsClean.filter(ee.Filter.eq('Irrigation_Type', 'Big Gun/Sprinkler'))
+              .map(function(feature){
+                      return feature.set({'Irrigation_Type_1': 'Big Gun',
+                                          'Irrigation_Type_2': 'Sprinkler'});
+              }),
+  fieldsClean.filter(ee.Filter.eq('Irrigation_Type', 'None/Rill'))
+              .map(function(feature){
+                      return feature.set({'Irrigation_Type_1': 'None',
+                                          'Irrigation_Type_2': 'Rill'});
+              }),
+  fieldsClean.filter(ee.Filter.eq('Irrigation_Type', 'Drip/Big Gun'))
+              .map(function(feature){
+                      return feature.set({'Irrigation_Type_1': 'Drip',
+                                          'Irrigation_Type_2': 'Big Gun'});
+              }),
+  fieldsClean.filter(ee.Filter.eq('Irrigation_Type', 'Big Gun/Drip'))
+              .map(function(feature){
+                      return feature.set({'Irrigation_Type_1': 'Big Gun',
+                                          'Irrigation_Type_2': 'Drip'});
+              }),  
+  fieldsClean.filter(ee.Filter.eq('Irrigation_Type', 'Big Gun/Wheel Line'))
+              .map(function(feature){
+                      return feature.set({'Irrigation_Type_1': 'Big Gun',
+                                          'Irrigation_Type_2': 'Wheel Line'});
+              }),  
+  fieldsClean.filter(ee.Filter.eq('Irrigation_Type', 'Drip/Sprinkler'))
+              .map(function(feature){
+                      return feature.set({'Irrigation_Type_1': 'Drip',
+                                          'Irrigation_Type_2': 'Sprinkler'});
+              }),
+  fieldsClean.filter(ee.Filter.eq('Irrigation_Type', 'Sprinkler/Wheel Line'))
+              .map(function(feature){
+                      return feature.set({'Irrigation_Type_1': 'Sprinkler',
+                                          'Irrigation_Type_2': 'Wheel Line'});
+              }),  
+  fieldsClean.filter(ee.Filter.inList('Irrigation_Type', ['Big Gun', 'Drip', 'None', 'Sprinkler', 'Wheel Line', 
+                                                           'Unknown', 'Center Pivot', 'Micro-Sprinkler']))
+              .map(function(feature){
+                      return feature.set({'Irrigation_Type_1': feature.getString('Irrigation_Type'),
+                                         'Irrigation_Type_2': 'N/A'});
+              }),                        
+]).flatten().sort('system:time_start');
+
+var fieldsFinal = fieldsClean2.map(function(feature){
+  return feature.select([
+      'Area_acres',
+      'Area_sq_meters',
+      'Crop_Group',
+      'Crop_Type',
+      'DataSource',
+      'Date',
+      'ET_actual_mm',
+      'ET_actual_in',
+      'ET_from_irrigation_mm',
+      'Irrigation_Type_1',
+      'Irrigation_Type_2',
+      'Irrigation_depth_mm',
+      'Irrigation_depth_inches',
+      'Irrigation_Volume_cubic_meters',
+      'Irrigtion_Volume_1000gal',
+      'LastSurveyDate',
+      'Precipitation_mm',
+      'Precipitation_Effective_mm',
+      'Precipitation_in',
+      'Precipitation_Effective_in',
+      'Water_Balance_mm',
+      'Water_Balance_Adjusted_mm',
+      'Water_Balance_Residual_mm',
+      'system:time_start',
+      'system:time_end']);
+});
+
+// print(fieldsFinal.first());
+
+Export.table.toAsset({
+  collection: fieldsFinal, 
+  description: 'Irrigation_App_Features/irrigation_app_features_corrected',
+});
+

@@ -1,0 +1,279 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var wria1 = ee.FeatureCollection("projects/ee-bomacarthur/assets/wria1Boundary"),
+    table1 = ee.FeatureCollection("projects/ee-bomacarthur/assets/WSDA_Fields/YearlyFields/wsdaFields2011"),
+    table2 = ee.FeatureCollection("projects/ee-bomacarthur/assets/WSDA_Fields/YearlyFields/wsdaFields2012"),
+    table3 = ee.FeatureCollection("projects/ee-bomacarthur/assets/WSDA_Fields/YearlyFields/wsdaFields2013"),
+    table4 = ee.FeatureCollection("projects/ee-bomacarthur/assets/WSDA_Fields/YearlyFields/wsdaFields2014"),
+    table5 = ee.FeatureCollection("projects/ee-bomacarthur/assets/WSDA_Fields/YearlyFields/wsdaFields2015"),
+    table6 = ee.FeatureCollection("projects/ee-bomacarthur/assets/WSDA_Fields/YearlyFields/wsdaFields2016"),
+    table7 = ee.FeatureCollection("projects/ee-bomacarthur/assets/WSDA_Fields/YearlyFields/wsdaFields2017"),
+    table8 = ee.FeatureCollection("projects/ee-bomacarthur/assets/WSDA_Fields/YearlyFields/wsdaFields2018"),
+    table9 = ee.FeatureCollection("projects/ee-bomacarthur/assets/WSDA_Fields/YearlyFields/wsdaFields2019"),
+    table10 = ee.FeatureCollection("projects/ee-bomacarthur/assets/WSDA_Fields/YearlyFields/wsdaFields2020"),
+    table11 = ee.FeatureCollection("projects/ee-bomacarthur/assets/WSDA_Fields/YearlyFields/wsdaFields2021"),
+    table12 = ee.FeatureCollection("projects/ee-bomacarthur/assets/WSDA_Fields/YearlyFields/wsdaFields2022"),
+    table13 = ee.FeatureCollection("projects/ee-bomacarthur/assets/WSDA_Fields/YearlyFields/wsdaFields2023");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+//////////////////
+
+Map.addLayer(table8, {}, '', false);
+
+// // Get some info about size and properties of feature collections from various years
+// print(table13.filterBounds(wria1).size());
+// print(table13.aggregate_array('CropGroup').distinct());
+// print(table13.aggregate_array('CropType').distinct());
+print(table8.first().propertyNames());
+
+// Create a custom filter
+var customFilter = ee.Filter([ee.Filter.bounds(wria1),
+                             ee.Filter.neq('CropGroup', 'Shellfish'),
+                             ee.Filter.neq('CropGroup', 'Developed'),
+                             ee.Filter.neq('CropType', 'Developed'),
+                             ee.Filter.neq('CropType', 'Research Station'),
+                             ee.Filter.neq('CropType', 'Shellfish')]);
+
+// Create start date
+var startDate = ee.Date('2011-01-01');
+var monthList = ee.List.sequence(0, 11);
+
+//////////////////
+// Test function to add date properties to one feature collection
+//////////////////
+
+var testAddPropertiesFunction =  ee.FeatureCollection(monthList.map(function(n){
+  return (table1.filter(customFilter)).map(function(feature) {
+    var yearStart = startDate.advance(0, 'year');
+    var monthStart = yearStart.advance(n, 'month');
+    var monthEnd = monthStart.advance(1, 'month');
+    return  feature.set({'Area': feature.area(),
+                          'system:time_start': monthStart.millis(),
+                          'system:time_end': monthEnd.millis(),
+                          'DateStart': monthStart.format('yyyy-MM-dd'),
+                          'DateEnd': monthEnd.format('yyyy-MM-dd'),
+                          'LastSurveyDate': ee.Date(feature.getNumber('LastSurvey')).format('yyy-MM-dd')})
+                    .select(['Area', 'County',  'CropGroup', 'CropType', 'DataSource', 'DateEnd', 'DateStart', 'ExactAcres', 
+                            'Irrigation', 'LastSurveyDate', 'system:time_end', 'system:time_start']);
+  });
+})).flatten();
+
+print('testAddPropertiesFunction', testAddPropertiesFunction.first(), testAddPropertiesFunction.size());
+
+
+// Add date properties and merge all feature collections
+var wsdaFields = ee.FeatureCollection([
+    
+    ee.FeatureCollection(monthList.map(function(n){
+  return (table1.filter(customFilter)).map(function(feature) {
+    var yearStart = startDate.advance(0, 'year');
+    var monthStart = yearStart.advance(n, 'month');
+    var monthEnd = monthStart.advance(1, 'month');
+     return  feature.set({'Area': feature.area(),
+                          'system:time_start': monthStart.millis(),
+                          'system:time_end': monthEnd.millis(),
+                          'DateStart': monthStart.format('yyyy-MM-dd'),
+                          'DateEnd': monthEnd.format('yyyy-MM-dd'),
+                          'LastSurveyDate': ee.Date(feature.getNumber('LastSurvey')).format('yyy-MM-dd')})
+                    .select(['Area', 'County',  'CropGroup', 'CropType', 'DataSource', 'DateEnd', 'DateStart', 'ExactAcres', 
+                            'Irrigation', 'LastSurveyDate', 'system:time_end', 'system:time_start']);
+  });})).flatten(),
+
+          ee.FeatureCollection(monthList.map(function(n){
+  return (table2.filter(customFilter)).map(function(feature) {
+    var yearStart = startDate.advance(1, 'year');
+    var monthStart = yearStart.advance(n, 'month');
+    var monthEnd = monthStart.advance(1, 'month');
+     return  feature.set({'Area': feature.area(),
+                          'system:time_start': monthStart.millis(),
+                          'system:time_end': monthEnd.millis(),
+                          'DateStart': monthStart.format('yyyy-MM-dd'),
+                          'DateEnd': monthEnd.format('yyyy-MM-dd'),
+                          'LastSurveyDate': ee.Date(feature.getNumber('LastSurvey')).format('yyy-MM-dd')})
+                    .select(['Area', 'County',  'CropGroup', 'CropType', 'DataSource', 'DateEnd', 'DateStart', 'ExactAcres', 
+                            'Irrigation', 'LastSurveyDate', 'system:time_end', 'system:time_start']);
+  });})).flatten(),
+
+          ee.FeatureCollection(monthList.map(function(n){
+  return (table3.filter(customFilter)).map(function(feature) {
+    var yearStart = startDate.advance(2, 'year');
+    var monthStart = yearStart.advance(n, 'month');
+    var monthEnd = monthStart.advance(1, 'month');
+     return  feature.set({'Area': feature.area(),
+                          'system:time_start': monthStart.millis(),
+                          'system:time_end': monthEnd.millis(),
+                          'DateStart': monthStart.format('yyyy-MM-dd'),
+                          'DateEnd': monthEnd.format('yyyy-MM-dd'),
+                          'LastSurveyDate': ee.Date(feature.getNumber('LastSurvey')).format('yyy-MM-dd')})
+                    .select(['Area', 'County',  'CropGroup', 'CropType', 'DataSource', 'DateEnd', 'DateStart', 'ExactAcres', 
+                            'Irrigation', 'LastSurveyDate', 'system:time_end', 'system:time_start']);
+  });})).flatten(),
+
+          ee.FeatureCollection(monthList.map(function(n){
+  return (table4.filter(customFilter)).map(function(feature) {
+    var yearStart = startDate.advance(3, 'year');
+    var monthStart = yearStart.advance(n, 'month');
+    var monthEnd = monthStart.advance(1, 'month');
+     return  feature.set({'Area': feature.area(),
+                          'system:time_start': monthStart.millis(),
+                          'system:time_end': monthEnd.millis(),
+                          'DateStart': monthStart.format('yyyy-MM-dd'),
+                          'DateEnd': monthEnd.format('yyyy-MM-dd'),
+                          'LastSurveyDate': ee.Date(feature.getNumber('LastSurvey')).format('yyy-MM-dd')})
+                    .select(['Area', 'County',  'CropGroup', 'CropType', 'DataSource', 'DateEnd', 'DateStart', 'ExactAcres', 
+                            'Irrigation', 'LastSurveyDate', 'system:time_end', 'system:time_start']);
+  });})).flatten(),
+
+          ee.FeatureCollection(monthList.map(function(n){
+  return (table5.filter(customFilter)).map(function(feature) {
+    var yearStart = startDate.advance(4, 'year');
+    var monthStart = yearStart.advance(n, 'month');
+    var monthEnd = monthStart.advance(1, 'month');
+     return  feature.set({'Area': feature.area(),
+                          'system:time_start': monthStart.millis(),
+                          'system:time_end': monthEnd.millis(),
+                          'DateStart': monthStart.format('yyyy-MM-dd'),
+                          'DateEnd': monthEnd.format('yyyy-MM-dd'),
+                          'LastSurveyDate': ee.Date(feature.getNumber('LastSurvey')).format('yyy-MM-dd')})
+                    .select(['Area', 'County',  'CropGroup', 'CropType', 'DataSource', 'DateEnd', 'DateStart', 'ExactAcres', 
+                            'Irrigation', 'LastSurveyDate', 'system:time_end', 'system:time_start']);
+  });})).flatten(),
+
+          ee.FeatureCollection(monthList.map(function(n){
+  return (table6.filter(customFilter)).map(function(feature) {
+    var yearStart = startDate.advance(5, 'year');
+    var monthStart = yearStart.advance(n, 'month');
+    var monthEnd = monthStart.advance(1, 'month');
+     return  feature.set({'Area': feature.area(),
+                          'system:time_start': monthStart.millis(),
+                          'system:time_end': monthEnd.millis(),
+                          'DateStart': monthStart.format('yyyy-MM-dd'),
+                          'DateEnd': monthEnd.format('yyyy-MM-dd'),
+                          'LastSurveyDate': ee.Date(feature.getNumber('LastSurvey')).format('yyy-MM-dd')})
+                    .select(['Area', 'County',  'CropGroup', 'CropType', 'DataSource', 'DateEnd', 'DateStart', 'ExactAcres', 
+                            'Irrigation', 'LastSurveyDate', 'system:time_end', 'system:time_start']);
+  });})).flatten(), 
+
+          ee.FeatureCollection(monthList.map(function(n){
+  return (table7.filter(customFilter)).map(function(feature) {
+    var yearStart = startDate.advance(6, 'year');
+    var monthStart = yearStart.advance(n, 'month');
+    var monthEnd = monthStart.advance(1, 'month');
+     return  feature.set({'Area': feature.area(),
+                          'system:time_start': monthStart.millis(),
+                          'system:time_end': monthEnd.millis(),
+                          'DateStart': monthStart.format('yyyy-MM-dd'),
+                          'DateEnd': monthEnd.format('yyyy-MM-dd'),
+                          'LastSurveyDate': ee.Date(feature.getNumber('LastSurvey')).format('yyy-MM-dd')})
+                    .select(['Area', 'County',  'CropGroup', 'CropType', 'DataSource', 'DateEnd', 'DateStart', 'ExactAcres', 
+                            'Irrigation', 'LastSurveyDate', 'system:time_end', 'system:time_start']);
+  });})).flatten(), 
+
+          ee.FeatureCollection(monthList.map(function(n){
+  return (table8.filter(customFilter)).map(function(feature) {
+    var yearStart = startDate.advance(7, 'year');
+    var monthStart = yearStart.advance(n, 'month');
+    var monthEnd = monthStart.advance(1, 'month');
+     return  feature.set({'Area': feature.area(),
+                          'system:time_start': monthStart.millis(),
+                          'system:time_end': monthEnd.millis(),
+                          'DateStart': monthStart.format('yyyy-MM-dd'),
+                          'DateEnd': monthEnd.format('yyyy-MM-dd'),
+                          'LastSurveyDate': ee.Date(feature.getNumber('LastSurvey')).format('yyy-MM-dd')})
+                    .select(['Area', 'County',  'CropGroup', 'CropType', 'DataSource', 'DateEnd', 'DateStart', 'ExactAcres', 
+                            'Irrigation', 'LastSurveyDate', 'system:time_end', 'system:time_start']);
+  });})).flatten(), 
+
+          ee.FeatureCollection(monthList.map(function(n){
+  return (table9.filter(customFilter)).map(function(feature) {
+    var yearStart = startDate.advance(8, 'year');
+    var monthStart = yearStart.advance(n, 'month');
+    var monthEnd = monthStart.advance(1, 'month');
+     return  feature.set({'Area': feature.area(),
+                          'system:time_start': monthStart.millis(),
+                          'system:time_end': monthEnd.millis(),
+                          'DateStart': monthStart.format('yyyy-MM-dd'),
+                          'DateEnd': monthEnd.format('yyyy-MM-dd'),
+                          'LastSurveyDate': ee.Date(feature.getNumber('LastSurvey')).format('yyy-MM-dd')})
+                    .select(['Area', 'County',  'CropGroup', 'CropType', 'DataSource', 'DateEnd', 'DateStart', 'ExactAcres', 
+                            'Irrigation', 'LastSurveyDate', 'system:time_end', 'system:time_start']);
+  });})).flatten(), 
+
+          ee.FeatureCollection(monthList.map(function(n){
+  return (table10.filter(customFilter)).map(function(feature) {
+    var yearStart = startDate.advance(9, 'year');
+    var monthStart = yearStart.advance(n, 'month');
+    var monthEnd = monthStart.advance(1, 'month');
+     return  feature.set({'Area': feature.area(),
+                          'system:time_start': monthStart.millis(),
+                          'system:time_end': monthEnd.millis(),
+                          'DateStart': monthStart.format('yyyy-MM-dd'),
+                          'DateEnd': monthEnd.format('yyyy-MM-dd'),
+                          'LastSurveyDate': ee.Date(feature.getNumber('LastSurvey')).format('yyy-MM-dd')})
+                    .select(['Area', 'County',  'CropGroup', 'CropType', 'DataSource', 'DateEnd', 'DateStart', 'ExactAcres', 
+                            'Irrigation', 'LastSurveyDate', 'system:time_end', 'system:time_start']);
+  });})).flatten(), 
+
+          ee.FeatureCollection(monthList.map(function(n){
+  return (table11.filter(customFilter)).map(function(feature) {
+    var yearStart = startDate.advance(10, 'year');
+    var monthStart = yearStart.advance(n, 'month');
+    var monthEnd = monthStart.advance(1, 'month');
+     return  feature.set({'Area': feature.area(),
+                          'system:time_start': monthStart.millis(),
+                          'system:time_end': monthEnd.millis(),
+                          'DateStart': monthStart.format('yyyy-MM-dd'),
+                          'DateEnd': monthEnd.format('yyyy-MM-dd'),
+                          'LastSurveyDate': ee.Date(feature.getNumber('LastSurvey')).format('yyy-MM-dd')})
+                    .select(['Area', 'County',  'CropGroup', 'CropType', 'DataSource', 'DateEnd', 'DateStart', 'ExactAcres', 
+                            'Irrigation', 'LastSurveyDate', 'system:time_end', 'system:time_start']);
+  });})).flatten(), 
+
+          ee.FeatureCollection(monthList.map(function(n){
+  return (table12.filter(customFilter)).map(function(feature) {
+    var yearStart = startDate.advance(11, 'year');
+    var monthStart = yearStart.advance(n, 'month');
+    var monthEnd = monthStart.advance(1, 'month');
+     return  feature.set({'Area': feature.area(),
+                          'system:time_start': monthStart.millis(),
+                          'system:time_end': monthEnd.millis(),
+                          'DateStart': monthStart.format('yyyy-MM-dd'),
+                          'DateEnd': monthEnd.format('yyyy-MM-dd'),
+                          'LastSurveyDate': ee.Date(feature.getNumber('LastSurvey')).format('yyy-MM-dd')})
+                    .select(['Area', 'County',  'CropGroup', 'CropType', 'DataSource', 'DateEnd', 'DateStart', 'ExactAcres', 
+                            'Irrigation', 'LastSurveyDate', 'system:time_end', 'system:time_start']);
+  });})).flatten(),
+
+          ee.FeatureCollection(monthList.map(function(n){
+  return (table13.filter(customFilter)).map(function(feature) {
+    var yearStart = startDate.advance(12, 'year');
+    var monthStart = yearStart.advance(n, 'month');
+    var monthEnd = monthStart.advance(1, 'month');
+     return  feature.set({'Area': feature.area(),
+                          'system:time_start': monthStart.millis(),
+                          'system:time_end': monthEnd.millis(),
+                          'DateStart': monthStart.format('yyyy-MM-dd'),
+                          'DateEnd': monthEnd.format('yyyy-MM-dd'),
+                          'LastSurveyDate': ee.Date(feature.getNumber('LastSurvey')).format('yyy-MM-dd')})
+                    .select(['Area', 'County',  'CropGroup', 'CropType', 'DataSource', 'DateEnd', 'DateStart', 'ExactAcres', 
+                            'Irrigation', 'LastSurveyDate', 'system:time_end', 'system:time_start']);
+  });})).flatten(),
+])
+.flatten().sort('system:time_start');
+
+
+// Check on filters and size
+// print('distinctCropGroups', wsdaFields.aggregate_array('CropGroup').distinct());
+// print('distinctCropTypes', wsdaFields.aggregate_array('CropType').distinct());
+// print('Size', wsdaFields.size());
+// print('First', wsdaFields.first());
+  
+  
+
+// Export merged feature collection
+Export.table.toAsset({
+  collection: wsdaFields,
+  description: 'wsdaFieldsMonthly'});
+  
+  
+  
+  
+  

@@ -1,0 +1,28 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var fields = ee.FeatureCollection("projects/ee-bomacarthur/assets/Test_Fields/testFieldsMeterData_4_16_update");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Prepare Test Fields Feature Collection
+
+print(fields.first().propertyNames());
+print(fields.size());
+print(fields.limit(5));
+
+var fieldProperties = fields.map(function(feature){
+  return feature.set({
+  'startDate': ee.Date(feature.getNumber('startDt')).format('yyyy-MM-dd'),
+  'endDate': ee.Date(feature.getNumber('endDate')).format('yyyy-MM-dd'),
+  'system:time_start': ee.Date(feature.getNumber('startDt')).millis(),
+  'system:time_end': ee.Date(feature.getNumber('endDate')).millis(),
+  'groupNumber': feature.getNumber('grpNmbr'),
+  'waterMeterVolume': feature.getNumber('watrVlm'),
+  'waterMeterDepth': feature.getNumber('watrVlm').multiply(1000).divide(feature.area()),
+  'area': feature.area()})
+  .select(['startDate', 'endDate', 'system:time_start', 'system:time_end', 'acres', 
+           'groupNumber', 'waterMeterDepth', 'waterMeterVolume', 'area']);
+}).sort('system:time_start');
+
+print(fieldProperties);
+
+Export.table.toAsset({
+  collection: fieldProperties,
+  description: 'testFieldsMeterDataArea_4_16_update'});

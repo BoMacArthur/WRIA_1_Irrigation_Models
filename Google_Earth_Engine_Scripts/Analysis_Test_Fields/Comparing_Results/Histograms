@@ -1,0 +1,116 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var xRaw = ee.FeatureCollection("projects/ee-bomacarthur/assets/Test_Results/wb_only_x_EE_results_complete"),
+    xySRaw = ee.FeatureCollection("projects/ee-bomacarthur/assets/Test_Results/wb_xyS_EE_results_complete"),
+    xyRaw = ee.FeatureCollection("projects/ee-bomacarthur/assets/Test_Results/wb_xy_EE_results_complete");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// var near1000Filtered = madFilter(near1000);
+// print('near1000Filtered', near1000Filtered.size());
+
+// var near1000Stats = near1000Filtered.aggregate_stats('meterMinusModelDepth');
+// print('near1000Stats', near1000Stats);
+// // print('near1000', near1000.sort('meterMinusModelDepth'));
+
+// var near1000Chart = ui.Chart.feature.histogram({
+//   features:near1000Filtered,
+//   property: 'meterMinusModelDepth',
+//   maxBuckets: 64
+// });
+// print('near1000Chart', near1000Chart);
+
+// Map.addLayer(ee.FeatureCollection(near1000.sort('meterMinusModelDepth').toList(10, 734)), 
+//             {color: 'yellow'}, 'near1000', true, 0.8);
+// print('near1000GroupNumberLowest', ee.FeatureCollection(near1000.sort('meterMinusModelDepth').toList(10))
+//                             .aggregate_array('groupNumber'));
+// print('near1000GroupNumberHighest', ee.FeatureCollection(near1000.sort('meterMinusModelDepth').toList(10,734))
+//                             .aggregate_array('groupNumber'));
+
+
+
+var x = xRaw
+
+print(x, xRaw);
+
+var xStats = x.aggregate_stats('meterMinusModelDepth');
+print('XStats', xStats);
+// print('wbOnlyX', wbOnlyX.sort('meterMinusModelDepth'));
+
+var xChart = ui.Chart.feature.histogram({
+  features: x,
+  property: 'meterMinusModelDepth',
+  maxBuckets: 64
+}).setOptions({title:'x'});
+print('xChart', xChart);
+
+// Map.addLayer(ee.FeatureCollection(wbOnlyX.sort('meterMinusModelDepth').toList(10, 734)), 
+//             {color: 'green'}, 'wbOnlyX', true, 0.8);
+// print('wbOnlyX Low', wbOnlyX.sort('meterMinusModelDepth').toList(10));
+// print('wbOnlyX High', wbOnlyX.sort('meterMinusModelDepth').toList(10, 734));
+// print('wbOnlyXGroupNumberLowest', ee.FeatureCollection(wbOnlyX.sort('meterMinusModelDepth').toList(10))
+//                             .aggregate_array('groupNumber'));
+// print('wbOnlyXGroupNumberHighest', ee.FeatureCollection(wbOnlyX.sort('meterMinusModelDepth').toList(10,734))
+//                             .aggregate_array('groupNumber'));
+
+
+var xy = xyRaw.filter(ee.Filter.inList('system:index', outliers.aggregate_array('system:index')).not());
+
+var xyStats = xy.aggregate_stats('meterMinusModelDepth');
+print('XyStats', xyStats);
+
+var xyChart = ui.Chart.feature.histogram({
+  features: xy,
+  property: 'meterMinusModelDepth',
+  maxBuckets: 64
+}).setOptions({title:'xy'});
+print('xyChart', xyChart);
+
+// Map.addLayer(ee.FeatureCollection(wbXYstatic.sort('meterMinusModelDepth').toList(10, 734)), 
+//             {color: 'blue'}, 'wbXYstatic', true, 0.8);
+// print('wbXYstatic Low', wbXYstatic.sort('meterMinusModelDepth').toList(10));
+// print('wbXYstatic High', wbXYstatic.sort('meterMinusModelDepth').toList(10, 734));
+// print('wbXYstaticGroupNumberLowest', ee.FeatureCollection(wbXYstatic.sort('meterMinusModelDepth').toList(10))
+//                             .aggregate_array('groupNumber'));
+// print('wbXYstaticGroupNumberHighest', ee.FeatureCollection(wbXYstatic.sort('meterMinusModelDepth').toList(10,734))
+//                             .aggregate_array('groupNumber'));
+
+
+
+var xyS = xySRaw.filter(ee.Filter.inList('system:index', outliers.aggregate_array('system:index')).not());
+
+var xySStats = xyS.aggregate_stats('meterMinusModelDepth');
+print('XySStats', xySStats);
+
+var xySChart = ui.Chart.feature.histogram({
+  features: xyS,
+  property: 'meterMinusModelDepth',
+  maxBuckets: 64
+}).setOptions({title:'xyS'});
+print('xySChart', xySChart);
+
+// Map.addLayer(ee.FeatureCollection(wbXY.sort('meterMinusModelDepth').toList(10)), 
+//             {color: 'purple'}, 'wbXY', true, 0.8);
+// print('wbXY Low', wbXY.sort('meterMinusModelDepth').toList(10));
+// print('wbXY High', wbXY.sort('meterMinusModelDepth').toList(10, 734));
+// print('wbXYGroupNumberLowest', ee.FeatureCollection(wbXY.sort('meterMinusModelDepth').toList(10))
+//                             .aggregate_array('groupNumber'));
+// print('wbXYGroupNumberHighest', ee.FeatureCollection(wbXY.sort('meterMinusModelDepth').toList(10,734))
+//                             .aggregate_array('groupNumber'));
+
+
+
+
+// var omitGroupsStats = omitGroups.aggregate_stats('meterMinusModelDepth');
+// print('omitGroupsStats', omitGroupsStats);
+// print('omitGroups', omitGroups.sort('meterMinusModelDepth'));
+
+// var omitGroupsChart = ui.Chart.feature.histogram({
+//   features:omitGroups,
+//   property: 'meterMinusModelDepth',
+//   maxBuckets: 64
+// });
+// print(omitGroupsChart);
+
+// Map.addLayer(ee.FeatureCollection(omitGroups.sort('meterMinusModelDepth').toList(10)), 
+//             {color: 'red'}, 'omitGroups', true, 0.8);
+// print('omitGroups', omitGroups.sort('meterMinusModelDepth').toList(10,626));
+// print('omitGroupsGroupNumber', ee.FeatureCollection(omitGroups.sort('meterMinusModelDepth').toList(10,626))
+//                             .aggregate_array('groupNumber'));

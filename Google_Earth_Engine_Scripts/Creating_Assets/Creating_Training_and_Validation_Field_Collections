@@ -1,0 +1,27 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var fields = ee.FeatureCollection("projects/ee-bomacarthur/assets/Test_Fields/testFieldsMeterDataArea_4_16_update"),
+    outliers = ee.FeatureCollection("projects/ee-bomacarthur/assets/Test_Fields/sharedOutliers");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Prepare Test Fields Feature Collection
+
+print(fields.first().propertyNames());
+print('Fields size', fields.size());
+
+var removeOutliers = fields.filter(ee.Filter.inList('system:index', outliers.aggregate_array('system:index')).not());
+print('Remove outliers size', removeOutliers.size());
+
+var randomColumn = removeOutliers.randomColumn();
+print(randomColumn);
+
+var trainingFields = randomColumn.filter(ee.Filter.gte('random', 0.3));
+print('Training size', trainingFields.size());
+var validationFields = randomColumn.filter(ee.Filter.lt('random', 0.3));
+print('Validation size', validationFields.size());
+
+Export.table.toAsset({
+  collection: trainingFields,
+  description: 'Test_Fields/trainingFields'});
+  
+Export.table.toAsset({
+  collection: validationFields,
+  description: 'Test_Fields/validationFields'});

@@ -1,0 +1,234 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var SWBR_12 = ee.FeatureCollection("projects/ee-bomacarthur/assets/Test_Results/SWBR_12_best_model_ee_results_no_outliers_set"),
+    SWBR_13 = ee.FeatureCollection("projects/ee-bomacarthur/assets/Test_Results/SWBR_13_best_model_ee_results_no_outliers"),
+    SWBR_24 = ee.FeatureCollection("projects/ee-bomacarthur/assets/Test_Results/SWBR_24_best_model_ee_results_no_outliers"),
+    NINA_ET = ee.FeatureCollection("projects/ee-bomacarthur/assets/Test_Results/NINA_ET_best_model_ee_results_no_outliers");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Calculating AIC and BIC for three Water Balance Models
+
+print(SWBR_12);
+var test = ee.Number(744);
+print(test.pow(2));
+print(test.divide(-2));
+print(test.log());
+print(test.log10());
+
+var size = SWBR_12.size();
+
+// Create a function to calculate Log Likelihood for Volume
+var logLikelihoodFunctionVolume = function(modelResults){
+  var logLikelihoodVolume = ee.Number.expression({
+    expression: '(-1 * (n / 2) * log(2 * Math.PI * varianceSquared)) - (1 / (2 * varianceSquared) * sumResidualsSquared)', 
+    vars: {
+      'n': size,
+      'varianceSquared': modelResults.aggregate_sample_var('meterMinusModelVolume'),
+      'sumResidualsSquared': 
+              ee.FeatureCollection(modelResults.map(function(feature){
+                  var residualSquared = feature.getNumber('meterMinusModelVolume').pow(2);
+                  return feature.set({'residualsSquared': residualSquared})}))
+              .aggregate_sum('residualsSquared')
+    }
+  });
+  return logLikelihoodVolume;
+};
+
+// Create a function to calculate Log Likelihood for Depth
+var logLikelihoodFunctionDepth = function(modelResults){
+  var logLikelihoodDepth = ee.Number.expression({
+    expression: '(-1 * (n / 2) * log(2 * Math.PI * varianceSquared)) - (1 / (2 * varianceSquared) * sumResidualsSquared)', 
+    vars: {
+      'n': size,
+      'varianceSquared': modelResults.aggregate_sample_var('meterMinusModelDepth'),
+      'sumResidualsSquared': 
+              ee.FeatureCollection(modelResults.map(function(feature){
+                  var residualSquared = feature.getNumber('meterMinusModelDepth').pow(2);
+                  return feature.set({'residualsSquared': residualSquared})}))
+              .aggregate_sum('residualsSquared')
+    }
+  });
+  return logLikelihoodDepth;
+};
+
+// Calculate log likelihood for all four models for Volume
+var SWBR_24LogLikelihoodVolume = logLikelihoodFunctionVolume(SWBR_24);
+var SWBR_13LogLikelihoodVolume = logLikelihoodFunctionVolume(SWBR_13);
+var SWBR_12LogLikelihoodVolume = logLikelihoodFunctionVolume(SWBR_12);
+var NINA_ETLogLikelihoodVolume = logLikelihoodFunctionVolume(NINA_ET);
+
+print('SWBR-24 Log Likelihood Volume', SWBR_24LogLikelihoodVolume, 
+      'SWBR-13 Log Likelihood Volume', SWBR_13LogLikelihoodVolume, 
+      'SWBR-12 Log Likelihood Volume', SWBR_12LogLikelihoodVolume,
+      'NINA_ET Log Likelihood Volume', NINA_ETLogLikelihoodVolume);
+
+// Calculate log likelihood for all four models for Depth
+var SWBR_24LogLikelihoodDepth = logLikelihoodFunctionDepth(SWBR_24);
+var SWBR_13LogLikelihoodDepth = logLikelihoodFunctionDepth(SWBR_13);
+var SWBR_12LogLikelihoodDepth = logLikelihoodFunctionDepth(SWBR_12);
+var NINA_ETLogLikelihoodDepth = logLikelihoodFunctionDepth(NINA_ET);
+
+print('SWBR-24 Log Likelihood Depth', SWBR_24LogLikelihoodDepth, 
+      'SWBR-13 Log Likelihood Depth', SWBR_13LogLikelihoodDepth, 
+      'SWBR-12 Log Likelihood Depth', SWBR_12LogLikelihoodDepth,
+      'NINA_ET Log Likelihood Depth', NINA_ETLogLikelihoodDepth);
+
+
+// Define number of parameters for all models
+var kSWBR_24 = ee.Number(24);
+var kSWBR_13 = ee.Number(13);
+var kSWBR_12 = ee.Number(12);
+var kNINA_ET = ee.Number(1);
+
+// Create a function to calculate AIC Volume
+var aicFunctionVolume = function(k, logLikelihoodVolume){
+  return k.multiply(2).subtract(logLikelihoodVolume.multiply(2));
+};
+
+// Calulate AIC for all four models Volume
+var SWBR_24AICVolume = aicFunctionVolume(kSWBR_24, SWBR_24LogLikelihoodVolume);
+var SWBR_13AICVolume = aicFunctionVolume(kSWBR_13, SWBR_13LogLikelihoodVolume);
+var SWBR_12AICVolume = aicFunctionVolume(kSWBR_12, SWBR_12LogLikelihoodVolume);
+var NINA_ETAICVolume = aicFunctionVolume(kNINA_ET, NINA_ETLogLikelihoodVolume);
+
+print('SWBR-24 AIC Volume:', SWBR_24AICVolume, 
+      'SWBR-13 AIC Volume:', SWBR_13AICVolume, 
+      'SWBR-12 AIC Volume:', SWBR_12AICVolume,
+      'NINA_ET AIC Volume:', NINA_ETAICVolume);
+
+// Create a function to calculate AIC Depth
+var aicFunctionDepth = function(k, logLikelihoodDepth){
+  return k.multiply(2).subtract(logLikelihoodDepth.multiply(2));
+};
+
+// Calulate AIC for all three models Depth
+var SWBR_24AICDepth = aicFunctionDepth(kSWBR_24, SWBR_24LogLikelihoodDepth);
+var SWBR_13AICDepth = aicFunctionDepth(kSWBR_13, SWBR_13LogLikelihoodDepth);
+var SWBR_12AICDepth = aicFunctionDepth(kSWBR_12, SWBR_12LogLikelihoodDepth);
+var NINA_ETAICDepth = aicFunctionDepth(kNINA_ET, NINA_ETLogLikelihoodDepth);
+
+print('SWBR-24 AIC Depth:', SWBR_24AICDepth, 
+      'SWBR-13 AIC Depth:', SWBR_13AICDepth, 
+      'SWBR-12 AIC Depth:', SWBR_12AICDepth,
+      'NINA_ET AIC Depth:', NINA_ETAICDepth);
+
+// Calculate min AIC Volume
+var AICminVolume = ee.List([SWBR_24AICVolume, SWBR_13AICVolume, SWBR_12AICVolume, NINA_ETAICVolume])
+                          .reduce(ee.Reducer.min());
+print('AICmin Volume', AICminVolume);
+
+// Calculate Relative AIC Volume
+var SWBR_24_AIC_relative_volume = SWBR_24AICVolume.subtract(AICminVolume);
+var SWBR_13_AIC_relative_volume = SWBR_13AICVolume.subtract(AICminVolume);
+var SWBR_12_AIC_relative_volume = SWBR_12AICVolume.subtract(AICminVolume);
+var NINA_ET_AIC_relative_volume = NINA_ETAICVolume.subtract(AICminVolume);
+print('SWBR-24 Relative AIC Volume', SWBR_24_AIC_relative_volume,
+      'SWBR-13 Relative AIC Volume', SWBR_13_AIC_relative_volume,
+      'SWBR-12 Relative AIC Volume', SWBR_12_AIC_relative_volume,
+      'NINA_ET Relative AIC Volume', NINA_ET_AIC_relative_volume);
+
+// Calculate min AIC Depth
+var AICminDepth = ee.List([SWBR_24AICDepth, SWBR_13AICDepth, SWBR_12AICDepth, NINA_ETAICDepth])
+                         .reduce(ee.Reducer.min());
+print('AICmin Depth', AICminDepth);
+
+// Calculate Relative AIC Depth
+var SWBR_24_AIC_relative_depth = SWBR_24AICDepth.subtract(AICminDepth);
+var SWBR_13_AIC_relative_depth = SWBR_13AICDepth.subtract(AICminDepth);
+var SWBR_12_AIC_relative_depth = SWBR_12AICDepth.subtract(AICminDepth);
+var NINA_ET_AIC_relative_depth = NINA_ETAICDepth.subtract(AICminDepth);
+print('SWBR-24 Relative AIC Depth', SWBR_24_AIC_relative_depth,
+      'SWBR-13 Relative AIC Depth', SWBR_13_AIC_relative_depth,
+      'SWBR-12 Relative AIC Depth', SWBR_12_AIC_relative_depth,
+      'NINA_ET Relative AIC Depth', NINA_ET_AIC_relative_depth);
+
+// Create a function to calculate BIC Volume
+var bicFunctionVolume = function(k, logLikelihoodVolume){
+  var n = size;
+  return k.multiply(n.log()).subtract(logLikelihoodVolume.multiply(2));
+};
+
+// Calulate BIC for all four models Volume
+var SWBR_24BICVolume = bicFunctionVolume(kSWBR_24, SWBR_24LogLikelihoodVolume);
+var SWBR_13BICVolume = bicFunctionVolume(kSWBR_13, SWBR_13LogLikelihoodVolume);
+var SWBR_12BICVolume = bicFunctionVolume(kSWBR_12, SWBR_12LogLikelihoodVolume);
+var NINA_ETBICVolume = bicFunctionVolume(kNINA_ET, NINA_ETLogLikelihoodVolume);
+
+print('SWBR-24 BIC Volume:', SWBR_24BICVolume, 
+      'SWBR-13 BIC Volume:', SWBR_13BICVolume, 
+      'SWBR-12 BIC Volume:', SWBR_12BICVolume,
+      'NINA_ET BIC Volume:', NINA_ETBICVolume);
+
+// Create a function to calculate BIC Depth
+var bicFunctionDepth = function(k, logLikelihoodDepth){
+  var n = size;
+  return k.multiply(n.log()).subtract(logLikelihoodDepth.multiply(2));
+};
+
+// Calulate BIC for all three models Depth
+var SWBR_24BICDepth = bicFunctionDepth(kSWBR_24, SWBR_24LogLikelihoodDepth);
+var SWBR_13BICDepth = bicFunctionDepth(kSWBR_13, SWBR_13LogLikelihoodDepth);
+var SWBR_12BICDepth = bicFunctionDepth(kSWBR_12, SWBR_12LogLikelihoodDepth);
+var NINA_ETBICDepth = bicFunctionDepth(kNINA_ET, NINA_ETLogLikelihoodDepth);
+
+print('SWBR-24 BIC Depth:', SWBR_24BICDepth, 
+      'SWBR-13 BIC Depth:', SWBR_13BICDepth, 
+      'SWBR-12 BIC Depth:', SWBR_12BICDepth,
+      'NINA_ET BIC Depth:', NINA_ETBICDepth);
+
+// Calculate Min BIC Volume
+var BICminVolume = ee.List([SWBR_24BICVolume, SWBR_13BICVolume, SWBR_12BICVolume, NINA_ETBICVolume])
+                          .reduce(ee.Reducer.min());
+print('BICmin Volume', BICminVolume);
+
+// Calculate Relative BIC Volume
+var SWBR_24_BIC_relative_volume = SWBR_24BICVolume.subtract(BICminVolume);
+var SWBR_13_BIC_relative_volume = SWBR_13BICVolume.subtract(BICminVolume);
+var SWBR_12_BIC_relative_volume = SWBR_12BICVolume.subtract(BICminVolume);
+var NINA_ET_BIC_relative_volume = NINA_ETBICVolume.subtract(BICminVolume);
+print('SWBR-24 Relative BIC Volume', SWBR_24_BIC_relative_volume,
+      'SWBR-13 Relative BIC Volume', SWBR_13_BIC_relative_volume,
+      'SWBR-12 Relative BIC Volume', SWBR_12_BIC_relative_volume,
+      'NINA_ET Relative BIC Volume', NINA_ET_BIC_relative_volume);
+
+// Calculate Min BIC Depth
+var BICminDepth = ee.List([SWBR_24BICDepth, SWBR_13BICDepth, SWBR_12BICDepth, NINA_ETBICDepth])
+                         .reduce(ee.Reducer.min());
+print('BICmin Depth', BICminDepth);
+
+// Calculate Relative BIC Depth
+var SWBR_24_BIC_relative_depth = SWBR_24BICDepth.subtract(BICminDepth);
+var SWBR_13_BIC_relative_depth = SWBR_13BICDepth.subtract(BICminDepth);
+var SWBR_12_BIC_relative_depth = SWBR_12BICDepth.subtract(BICminDepth);
+var NINA_ET_BIC_relative_depth = NINA_ETBICDepth.subtract(BICminDepth);
+print('SWBR-24 Relative BIC Depth', SWBR_24_BIC_relative_depth,
+      'SWBR-13 Relative BIC Depth', SWBR_13_BIC_relative_depth,
+      'SWBR-12 Relative BIC Depth', SWBR_12_BIC_relative_depth,
+      'NINA_ET Relative BIC Depth', NINA_ET_BIC_relative_depth);
+
+var results = ee.FeatureCollection([ee.Feature(null, 
+                                   {'SWBR_24_Relative_AIC_Volume': SWBR_24_AIC_relative_volume,
+                                    'SWBR_13_Relative_AIC_Volume': SWBR_13_AIC_relative_volume,
+                                    'SWBR_12_Relative_AIC_Volume': SWBR_12_AIC_relative_volume,
+                                    'NINA_ET_Relative_AIC_Volume': NINA_ET_AIC_relative_volume,
+                                    'SWBR_24_Relative_AIC_Depth': SWBR_24_AIC_relative_depth,
+                                    'SWBR_13_Relative_AIC_Depth': SWBR_13_AIC_relative_depth,
+                                    'SWBR_12_Relative_AIC_Depth': SWBR_12_AIC_relative_depth,
+                                    'NINA_ET_Relative_AIC_Depth': NINA_ET_AIC_relative_depth,
+                                    'SWBR_24_Relative_BIC_Volume': SWBR_24_BIC_relative_volume,
+                                    'SWBR_13_Relative_BIC_Volume': SWBR_13_BIC_relative_volume,
+                                    'SWBR_12_Relative_BIC_Volume': SWBR_12_BIC_relative_volume,
+                                    'NINA_ET_Relative_BIC_Volume': NINA_ET_BIC_relative_volume,
+                                    'SWBR_24_Relative_BIC_Depth': SWBR_24_BIC_relative_depth,
+                                    'SWBR_13_Relative_BIC_Depth': SWBR_13_BIC_relative_depth,
+                                    'SWBR_12_Relative_BIC_Depth': SWBR_12_BIC_relative_depth,
+                                    'NINA_ET_Relative_BIC_Depth': NINA_ET_BIC_relative_depth
+                                   }
+                                   )]);
+print('Resuslts', results.first());
+
+Export.table.toDrive({
+  collection: results, 
+  description: 'AIC_BIC_no_outliers_set',
+  folder: 'AIC/BIC',
+  fileFormat: 'CSV'
+});
+

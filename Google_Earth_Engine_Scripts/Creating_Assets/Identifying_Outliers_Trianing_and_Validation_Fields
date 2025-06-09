@@ -1,0 +1,185 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = 
+    /* color: #d63000 */
+    /* shown: false */
+    ee.Geometry.Point([-122.09453125, 48.79579041838873]),
+    fields = ee.FeatureCollection("projects/ee-bomacarthur/assets/Test_Fields/testFieldsMeterDataArea_4_16_update"),
+    x = ee.FeatureCollection("projects/ee-bomacarthur/assets/Test_Results/wb_only_x_EE_results_complete"),
+    xyS = ee.FeatureCollection("projects/ee-bomacarthur/assets/Test_Results/wb_xyS_EE_results_complete"),
+    xy = ee.FeatureCollection("projects/ee-bomacarthur/assets/Test_Results/wb_xy_EE_results_complete"),
+    nearest = ee.FeatureCollection("projects/ee-bomacarthur/assets/Test_Results/nearest_field_1k_complete");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+//////////////////
+// Create a function to calculate MAD depth, set upper and lower bounds, and filter out outliers
+//////////////////
+
+// MAD Function
+var madFunction = function(testResults){
+  var median = testResults.reduceColumns({
+                  reducer: ee.Reducer.median(),
+                  selectors: ['meterMinusModelDepth']})
+                .getNumber('median');
+  var mad = testResults.map(function(feature){
+    var subtractMedian = feature.getNumber('meterMinusModelDepth').subtract(median).abs();
+    return feature.set({
+      'subtractMedian': subtractMedian
+    });
+  }).reduceColumns({
+    reducer: ee.Reducer.median(),
+    selectors: ['subtractMedian']
+    }).getNumber('median');
+  return mad;
+};
+// Print value of MAD for all test results
+var madX = madFunction(x);
+print('MAD X', madX);
+var madXY = madFunction(xy);
+print('MAD XY', madXY);
+var madXYS = madFunction(xyS);
+print('MAD xyS', madXYS);
+
+var outliers = function(testResults){
+  var median = testResults.reduceColumns({
+                  reducer: ee.Reducer.median(),
+                  selectors: ['meterMinusModelDepth']})
+                .getNumber('median');
+  var mad = testResults.map(function(feature){
+    var subtractMedian = feature.getNumber('meterMinusModelDepth').subtract(median).abs();
+    return feature.set({
+      'subtractMedian': subtractMedian
+    });
+  }).reduceColumns({
+    reducer: ee.Reducer.median(),
+    selectors: ['subtractMedian']
+    }).getNumber('median');
+
+  var lowerBounds = median.subtract(mad.multiply(2).multiply(1.4826));
+  var upperBounds = median.add(mad.multiply(2).multiply(1.4826));
+  
+  return testResults.filter(ee.Filter.rangeContains('meterMinusModelDepth', lowerBounds, upperBounds).not());
+}; 
+
+// Apply model to Nearest fields model to find outliers
+var outliersNearest = outliers(nearest);
+print('Number of outliers Nearest Fields', outliersNearest.size());
+
+// Apply function to water balance models to find outliers
+var outliersX = outliers(x);
+print('Number of outliers X', outliersX.size());
+var outliersXY = outliers(xy);
+print('Number of outliers XY', outliersXY.size());
+var outliersXYS = outliers(xyS);
+print('Number of outliers xyS', outliersXYS.size());
+
+
+
+//////////////////
+// Outliers
+//////////////////
+
+// Ensure all the system:index IDs are the same for the Water Balance models (Yes, they are)
+
+// print(nearest.filter(ee.Filter.eq('system:index', '00000000000000000139')).first());
+// print(x.filter(ee.Filter.eq('system:index', '00000000000000000139')).first());
+// print(xy.filter(ee.Filter.eq('system:index', '00000000000000000139')).first());
+// print(xyS.filter(ee.Filter.eq('system:index', '00000000000000000139')).first());
+
+
+// Create a list of outliers from all water balance models
+var allOutliers = ee.List([outliersX.aggregate_array('system:index'),
+                           outliersXY.aggregate_array('system:index'),
+                           outliersXYS.aggregate_array('system:index')])
+                  .flatten();
+print('List of all water balance outliers', allOutliers);
+
+// Total number of unique outliers
+var uniqueOutliers = allOutliers.distinct();
+print('Unique outliers IDs', uniqueOutliers);
+
+//////////////////
+// Find only features that are outliers in all three Water balance models
+//////////////////
+
+// Count how many times each feature ID is present in list of allOutliers
+var count = ee.Dictionary(allOutliers.reduce(ee.Reducer.frequencyHistogram()));
+print('Count', count);
+
+// Extract the "count" key value pairs as separate lists
+var ids = count.keys();
+var values = count.values();
+// print('ids', ids);
+// print('values', values);
+
+// Create a list of numbers to map a function over
+var list = ee.List.sequence(0, uniqueOutliers.size().subtract(1));
+
+// Create a feature collection with the outlier Featuer IDs as a property 
+var idsCol = ee.FeatureCollection(ids.map(function(id){
+  return ee.Feature(null, {'id': id});
+}));
+print('idsCol', idsCol);
+
+// Create a feature collection with the outlier count value as a property
+var valuesCol = ee.FeatureCollection(values.map(function(value){
+  return ee.Feature(null, {'value': value});
+}));
+print('valuesCol', valuesCol);
+
+// Map a function over the list to create a feature collection with ID and Value as properties
+//    Then filter the feature collection for only shared outliers in all three models
+var sharedOutliers = ee.FeatureCollection(list.map(function(n){
+  var id = ee.Feature(idsCol.toList(1,n).get(0)).get('id');
+  var value = ee.Feature(valuesCol.toList(1,n).get(0)).get('value');
+  return ee.Feature(geometry, {'id': id, 'value': value});
+})
+).filter(ee.Filter.inList('value', [3]));
+print('sharedOutliers', sharedOutliers);
+
+// Map a function over the list to create a feature collection with all uniqe ID and Value as properties
+var uniqueOutliers = ee.FeatureCollection(list.map(function(n){
+  var id = ee.Feature(idsCol.toList(1,n).get(0)).get('id');
+  var value = ee.Feature(valuesCol.toList(1,n).get(0)).get('value');
+  return ee.Feature(geometry, {'id': id, 'value': value});
+}));
+print('uniqueOutliers', uniqueOutliers);
+
+var fieldsWithoutOutliers = fields.filter(ee.Filter.inList('system:index', uniqueOutliers.aggregate_array('id')).not());
+print('fieldsWithoutOutliers', fieldsWithoutOutliers);
+
+var randomNumbers = fieldsWithoutOutliers.randomColumn();
+print('random Numbers', randomNumbers);
+
+var trainingFields = randomNumbers.filter(ee.Filter.gte('random', 0.3));
+var validationFields = randomNumbers.filter(ee.Filter.lt('random', 0.3));
+print('training fields size', trainingFields.size());
+print('validation fields size', validationFields.size());
+
+//////////////////
+// Export training and Validation fields and all fields without outliers (shared and unique outliers as assets)
+//////////////////
+
+Export.table.toAsset({
+  collection: sharedOutliers,
+  description: 'Test_Results/sharedOutliers'});
+  
+Export.table.toAsset({
+  collection: uniqueOutliers,
+  description: 'Test_Results/uniqueOutliers'});
+
+Export.table.toAsset({
+  collection: fieldsWithoutOutliers,
+  description: 'Test_Fields/testFieldsWithoutOutliers'});  
+
+Export.table.toAsset({
+  collection: trainingFields,
+  description: 'Test_Fields/trainingFields'});
+
+Export.table.toAsset({
+  collection: validationFields,
+  description: 'Test_Fields/validationFields'});
+  
+  
+  
+  
+
+

@@ -1,0 +1,141 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var openEt = ee.ImageCollection("OpenET/ENSEMBLE/CONUS/GRIDMET/MONTHLY/v2_0"),
+    daymet = ee.ImageCollection("NASA/ORNL/DAYMET_V4"),
+    wria1 = ee.FeatureCollection("projects/ee-bomacarthur/assets/wria1Boundary"),
+    etAndPrcp = ee.ImageCollection("projects/ee-bomacarthur/assets/etAndPrcp");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+//////////////////
+// Export ET and PRCP time series Collection to an asset
+//////////////////
+
+// Extract native projections and scale from OpenET and Daymet images
+var openEtScale = openEt.first().projection().nominalScale();
+var openEtProjection = openEt.first().projection().crs();
+var daymetScale = daymet.first().projection().nominalScale();
+var daymetProjection = daymet.first().projection();
+
+print(openEtProjection);
+
+//////////////////
+// Create a monthly time series of Precipitation
+//////////////////
+
+// Create a list of months and define start date
+var monthList = ee.List.sequence(0,156);
+var startDate = ee.Date.fromYMD(2010,12,1);
+
+// Map a function over a list of months to compute monthly precipitation
+var monthlyPrcpCol = ee.ImageCollection.fromImages(monthList.map(function (n) {
+  var start = startDate.advance(n, 'month'); 
+  var end = start.advance(1, 'month'); 
+  var prcpFiltered = daymet.filterDate(start, end)
+                  .filterBounds(wria1)
+                  .select('prcp');
+  var sumPrcp = prcpFiltered.reduce(ee.Reducer.sum()).rename('P'); 
+  
+  return sumPrcp.set({
+    'system:time_start': start.millis(),
+    'system:time_end': end.millis(),
+    'date': start.format('yyyy-MM-dd'),
+    'year': start.get('year'),
+    'month': start.get('month')
+  }).unmask();
+}
+)).map(function(image){
+  return image.resample('bilinear').reproject({crs: openEtProjection, scale: openEtScale});
+});
+
+//////////////////
+// Create a monthly time series of Evapotranspiration
+//////////////////
+
+// Map a function over a list of months to compute monthly precipitation
+var monthlyEtCol = ee.ImageCollection.fromImages(monthList.map(function (n) {
+  var start = startDate.advance(n, 'month'); 
+  var end = start.advance(1, 'month'); 
+  var etFiltered = openEt.filter(ee.Filter.date(start, end))
+                        .filterBounds(wria1)
+                        .select('et_ensemble_mad');
+  var sumEt = etFiltered.reduce(ee.Reducer.sum()).rename('ETa'); 
+  
+  return sumEt.set({
+    'system:time_start': start.millis(),
+    'system:time_end': end.millis(),
+    'date': start.format('yyyy-MM-dd'),
+    'year': start.get('year'),
+    'month': start.get('month')
+  }).unmask();
+}
+));
+// print('monthlyPrcpCol', monthlyPrcpCol, 'monthlyEtCol', monthlyEtCol);
+
+// Add Et and PRCP bands to the same image
+
+var etAndPrcp = monthlyEtCol.map(function(etImage) {
+  // Find the corresponding precipitation image by date
+  var date = etImage.date();
+  var prcpImage = monthlyPrcpCol.filterDate(date, date.advance(1, 'month')).first();
+
+  // Combine ET and Precipitation bands into a single image and set default projection
+  return etImage.addBands(prcpImage.select('P')).toFloat(); // cast both bands to float
+});
+
+print(etAndPrcp);
+
+// *************************************************************
+// Export ImageCollection to Asset
+// *************************************************************
+
+// If you want to use the collection in another script
+// it is better to export the images as assets.
+
+// This is also recommended for collections that require large
+// computation and may time-out. Exporting to Asset will
+// result in a pre-computed collection that can be imported and 
+// used without these errors.
+
+// First create a new empty collection
+// Go to Assets Tab -> New -> Image collection
+
+// Once created, replace below with your own image collection id
+var exportAsset = 'etAndPrcp';
+
+// Next we will export images as assets into this collection
+var doExportAsset = function() {
+  print('Working');
+  var ids = etAndPrcp.aggregate_array('system:index');
+  // evaluate() will not block the UI and once the result is available
+  // will be passed-on to the callback function where we will call
+  // Export.image.toAsset()
+  ids.evaluate(function(imageIds) {
+    print('Total number of images', imageIds.length);
+    print('Exporting now... (see Tasks tab)');
+    print('Tip: Use Ctrl+Click/Cmd+Click on tasks to skip confirmation.');
+    for(var i = 0; i < imageIds.length; i++) {
+      
+      // Filter using the image id
+      var image = ee.Image(etAndPrcp.toList(1, i).get(0));
+
+      // Clip image to the geometry
+      Export.image.toAsset({
+        image: image,
+        description: 'etAndPrcp' + i + '_' + imageIds[i],
+        assetId: exportAsset + '/' + imageIds[i],
+        region: wria1,
+        scale: 30,
+        crs: 'EPSG:32610'
+      });
+    }
+  });
+  
+};
+
+print('Click button below to start export to Asset');
+var button = ui.Button({label: 'Export to Asset', onClick: doExportAsset});
+print(button);
+
+// Once all the exports finish, you can use the resulting collection
+// in other scripts just like a regular GEE collection
+var exportAssetCol = etAndPrcp
+print(exportAssetCol)
+

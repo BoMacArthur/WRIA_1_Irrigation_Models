@@ -1,0 +1,331 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var wria1 = ee.FeatureCollection("projects/ee-bomacarthur/assets/wria1Boundary"),
+    allFields = ee.FeatureCollection("projects/ee-bomacarthur/assets/zonalStats/allFieldsZonalStatsEnsem"),
+    geometry = 
+    /* color: #d63000 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[-122.33689842612226, 48.72511972728958],
+          [-122.33689842612226, 48.70971669597075],
+          [-122.31887398154218, 48.70971669597075],
+          [-122.31887398154218, 48.72511972728958]]], null, false),
+    etAndPrcp = ee.ImageCollection("projects/ee-bomacarthur/assets/etAndPrcp"),
+    fields = ee.FeatureCollection("projects/ee-bomacarthur/assets/Test_Fields/testFieldsNoOutliers");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+Map.addLayer(wria1, {}, 'WRIA 1 Boundary', false, 0.3);
+
+
+print('~~~~~~ All Fields ~~~~~~~', 
+      'First feature', allFields.first(), 
+      'Property names', allFields.first().propertyNames(), 
+      'Unique irrigation types', allFields.aggregate_array('Irrigation').distinct(),
+      'Unique Dates', allFields.aggregate_array('DateStart').distinct(),
+      'Number of Fields', allFields.size());
+// Map.addLayer(allFields.filterDate('2023-12-01', '2024-01-01').filter(ee.Filter.eq('Irrigation', 'None')));
+
+print('~~~~~~ Test Fields ~~~~~~~', 
+      'First feature', fields.first(), 
+      'Property names', fields.first().propertyNames(),
+      'Number of Fields', fields.size());
+
+print('etAndPrcp', etAndPrcp.first());
+
+
+
+//////////////////
+// Calculate ET Zonal Stats for Test Fields
+//////////////////
+var testFields = etAndPrcp.map(function(image){
+  var date = ee.Date(image.getString('date'));
+  var filterFields = fields.filterDate(date, date.advance(1, 'month'));
+  var propertyNames = ee.List([ee.List(fields.first().propertyNames()), 'et']).flatten();
+  var calculateET = image.select(['ETa']).reduceRegions({
+    collection: filterFields,
+    reducer: ee.Reducer.mean(),
+    scale: 30,
+    crs: 'EPSG:32610', 
+    tileScale: 16
+  });
+  return calculateET.map(function(feature){
+    return feature.set({'et': feature.getNumber('mean')})
+                  .select(propertyNames);
+  });
+}).flatten();
+print('Test Fields with ET', testFields);
+
+Map.addLayer(testFields, {color: 'blue'}, 'Test Fields', false, 0.6);
+Map.centerObject(fields, 8);
+//////////////////
+// Find nearest non-irrigated field and subtract ET from irrigated fields
+//////////////////
+
+// // Test for one sample
+
+// var testField = ee.Feature(testFields.filter(ee.Filter.eq('system:index', '92_000000000000000000e0')).first());
+// print('testField', testField);
+
+// var testFieldGeo = testField.geometry();
+// print('testFieldGeo', testFieldGeo);
+
+// var bufferTest = testField.buffer(1000).geometry();
+// Map.addLayer(bufferTest, {color: 'yellow'}, '1000m buffer');
+// Map.addLayer(testField, {color: 'green'}, 'Test Field');
+// Map.centerObject(testField, 12);
+// var start = ee.String(testField.getString('startDate'));
+// print('start', start);
+// var allFieldsFiltered = allFields.filter(ee.Filter.eq('DateStart', start)).filterBounds(bufferTest).filter(ee.Filter.eq('Irrigation', 'None'));
+// print('allFieldsFiltered', allFieldsFiltered);
+
+// var distance = testField.geometry().distance(allFieldsFiltered.first().geometry());
+// // print('distance', distance);
+
+// var nearest = ee.FeatureCollection(allFieldsFiltered.map(function(nirFeature) {
+//     var distance = testField.geometry().distance(nirFeature.geometry());
+//     var distanceCollection = nirFeature.set({'distance': distance})
+//                     .select(['distance', 'et', 'system:time_start', 'system:time_end', 'DateStart']);
+//   return distanceCollection;
+//   }));
+// print('Nearest non-Irrigated Fields', nearest);
+  
+// var nearestFiltered = ee.FeatureCollection(nearest.filter(ee.Filter.gt('distance', 100)));
+
+// Map.addLayer(nearestFiltered, {color: 'blue'}, 'Nearest');
+
+
+//////////////////
+// Mapped function
+//////////////////
+var testFieldsFiltered = testFields.filter(ee.Filter.bounds(geometry).not());
+var testFieldsSV = testFields.filter(ee.Filter.bounds(geometry));
+var allFieldsFiltered = allFields.filter(ee.Filter.eq('Irrigation', 'None'));
+print('testFieldsFiltered', testFieldsFiltered);
+print('testFieldsSV', testFieldsSV);
+
+
+// print('allFieldsFiltered size', allFieldsFiltered.size());
+// Map.addLayer(testFieldsFiltered,{}, ' testFieldsFiltered');
+
+// Run function for fields not Sudden Valley
+var testFieldsMapped = testFieldsFiltered.map(function(testFeature){
+  var buffer = testFeature.buffer(1000).geometry();
+  var start = ee.String(testFeature.getString('startDate'));
+  var allFieldsBuffer = allFieldsFiltered.filterBounds(buffer)
+                                        .filter(ee.Filter.eq('DateStart', start));
+
+  var nearest = allFieldsBuffer.map(function(nirFeature) {
+      var distance = nirFeature.geometry().distance(testFeature.geometry());
+      var et = nirFeature.getNumber('et');
+    
+      return nirFeature.set({
+      'distance': distance, 
+      'et': et,
+      'system:time_start': ee.Date(start).millis(),
+      'system:time_end': ee.Date(start).advance(1, 'month').millis()
+      });
+    });
+
+  var nearestFiltered = ee.FeatureCollection(nearest.filter(ee.Filter.gt('distance', 100)));
+  var nearestFilteredSize = nearestFiltered.size();
+
+  var etIrrigated = testFeature.getNumber('et');
+  var etNonIrrigatedAvg = nearestFiltered.aggregate_mean('et');
+
+  var adjustedEt = etIrrigated.subtract(etNonIrrigatedAvg);
+
+  // var numberOfClosestFields = nearestFilteredSize.gt(0);
+
+  return testFeature.set({
+      'closestFieldsEtAvg': etNonIrrigatedAvg,
+      'numberOfClosestFields': nearestFilteredSize,
+      'ETi': adjustedEt,  // Store Adjusted ET,
+    });
+  });
+print('testFieldsMapped', testFieldsMapped);
+
+// Run function for Sudden Valley fields
+var testFieldsMappedSV = testFieldsSV.map(function(testFeatureSV){
+  var bufferSV= testFeatureSV.buffer(7000).geometry();
+  var startSV = ee.String(testFeatureSV.getString('startDate'));
+  var allFieldsBufferSV = allFieldsFiltered.filter(ee.Filter.eq('DateStart', startSV))
+                                    .filterBounds(bufferSV)
+                                    .filter(ee.Filter.eq('Irrigation', 'None'));
+
+  var nearestSV = allFieldsBufferSV.map(function(nirFeatureSV) {
+      var distanceSV = testFeatureSV.geometry().distance(nirFeatureSV.geometry());
+      var etSV = nirFeatureSV.getNumber('et');
+    
+    return nirFeatureSV.set({
+        'distance': distanceSV, 
+        'et': etSV,
+        'system:time_start': ee.Date(startSV).millis(),
+        'system:time_end': ee.Date(startSV).advance(1, 'month').millis()
+      });
+    });
+
+  var nearestFilteredSV = ee.FeatureCollection(nearestSV.filter(ee.Filter.gt('distance', 100)));
+  var nearestFilteredSizeSV = nearestFilteredSV.size();
+
+  var etIrrigatedSV = testFeatureSV.getNumber('et');
+  var etNonIrrigatedAvgSV = nearestFilteredSV.aggregate_mean('et');
+
+  var adjustedEtSV = etIrrigatedSV.subtract(etNonIrrigatedAvgSV);
+
+  // var numberOfClosestFieldsSV = nearestFilteredSizeSV.gt(0);
+
+  return testFeatureSV.set({
+      'closestFieldsEtAvg': etNonIrrigatedAvgSV,  // Store distance
+      'numberOfClosestFields': nearestFilteredSizeSV,
+      'ETi': adjustedEtSV,  // Store Adjusted ET,
+    });
+  });
+print('testFieldsMappedSV', testFieldsMappedSV);
+
+
+// Account for negative irrigated ET
+
+var negativeEt = ee.FeatureCollection([
+  testFieldsMapped.filter(ee.Filter.lte('ETi', 0)), 
+  testFieldsMappedSV.filter(ee.Filter.lte('ETi', 0))
+  ]).flatten();
+var positiveEt = ee.FeatureCollection([
+  testFieldsMapped.filter(ee.Filter.gt('ETi', 0)), 
+  testFieldsMappedSV.filter(ee.Filter.gt('ETi', 0))
+  ]).flatten();
+
+print('negativeEt', negativeEt, 'positiveEt', positiveEt);
+
+var negativeWaterModelVolume = ee.FeatureCollection(negativeEt.map(function(negFeature){
+    var featureDefined = ee.Feature(negFeature);
+    var area = featureDefined.getNumber('area');
+    var waterMeter = featureDefined.getNumber('waterMeterVolume');
+    return featureDefined.set({'waterModelVolume': 0,
+                              'ETi': 0,
+                              'waterModelDepth': 0,
+                              'waterMeterDepth': waterMeter.divide(area).multiply(1000)});
+}));
+
+// Define Irrigation efficiency based on irrigation type
+var irrigationEfficiency = 0.31;
+
+var positiveWaterModelVolume = ee.FeatureCollection(positiveEt.map(function(posFeature){
+    var featureDefined = ee.Feature(posFeature);
+    var area = featureDefined.getNumber('area');
+    var etFromIrrigation = featureDefined.getNumber('ETi');
+    var waterMeter = featureDefined.getNumber('waterMeterVolume');
+    var irrigationType = posFeature.getString('Irrigation');
+    return featureDefined.set({'waterModelVolume': etFromIrrigation.multiply(area).divide(1000).abs().divide(irrigationEfficiency),
+                              'ETi': etFromIrrigation.abs(),
+                              'waterModelDepth': etFromIrrigation.abs().divide(irrigationEfficiency),
+                              'waterMeterDepth': waterMeter.divide(area).multiply(1000)})
+}));
+
+var nearestFieldsCol = ee.FeatureCollection([negativeWaterModelVolume, positiveWaterModelVolume])
+                                .flatten().sort('systme:time_start');
+
+var testResults = nearestFieldsCol.map(function(feature){
+  return feature.set({'meterMinusModelVolume': feature.getNumber('waterMeterVolume')
+                              .subtract(feature.getNumber('waterModelVolume')),
+                      'meterMinusModelVolumeAbs': feature.getNumber('waterMeterVolume')
+                              .subtract(feature.getNumber('waterModelVolume')).abs(),
+                      'meterMinusModelDepth': feature.getNumber('waterMeterDepth')
+                              .subtract(feature.getNumber('waterModelDepth')),
+                      'meterMinusModelDepthAbs': feature.getNumber('waterMeterDepth')
+                              .subtract(feature.getNumber('waterModelDepth')).abs()
+  });
+});
+
+print('testResults', testResults.first());
+
+//////////////////
+// Calculate Mean Absolute Error
+//////////////////
+
+var size = testFields.size();
+
+// MAE = Sum(|Meter - Model|) / number of fields
+
+var maeVolume = testResults.reduceColumns({
+    reducer: ee.Reducer.sum(),
+    selectors: ['meterMinusModelVolumeAbs']})
+  .getNumber('sum').divide(size);
+print('mae Volume (m³)', maeVolume);
+
+var maeDepth = testResults.reduceColumns({
+    reducer: ee.Reducer.sum(),
+    selectors: ['meterMinusModelDepthAbs']})
+ .getNumber('sum').divide(size);
+ print('mae depth (mm)', maeDepth);
+ 
+// MAE% = MAE / meterAVG x 100
+var maePercentVolume = maeVolume.divide(fields.aggregate_mean('waterMeterVolume')).multiply(100);
+print('MAE% Volume', maePercentVolume); 
+
+var maePercentDepth = maeDepth.divide(fields.aggregate_mean('waterMeterDepth')).multiply(100);
+print('MAE% Depth', maePercentDepth);
+
+//////////////////
+// Calculate Median Absolute Deviation
+//////////////////
+var madVolume = testResults.map(function(feature){
+  var median = testResults.reduceColumns({
+                  reducer: ee.Reducer.median(),
+                  selectors: ['meterMinusModelVolume']})
+                .getNumber('median');
+  var mad = feature.getNumber('meterMinusModelVolume').subtract(median).abs();
+  return feature.set({
+    'xSubtractMedianX': mad
+  });
+}).reduceColumns({
+    reducer: ee.Reducer.median(),
+    selectors: ['xSubtractMedianX']
+}).getNumber('median').multiply(1.4826);
+print('mad volume (m³)', madVolume);
+
+var madDepth = testResults.map(function(feature){
+  var median = testResults.reduceColumns({
+                  reducer: ee.Reducer.median(),
+                  selectors: ['meterMinusModelDepth']})
+                .getNumber('median');
+  var mad = feature.getNumber('meterMinusModelDepth').subtract(median).abs();
+  return feature.set({
+    'xSubtractMedianX': mad
+  });
+}).reduceColumns({
+    reducer: ee.Reducer.median(),
+    selectors: ['xSubtractMedianX']
+}).getNumber('median').multiply(1.4826);
+print('mad depth (mm)', madDepth);
+
+//////////////////
+// Export Results
+//////////////////
+
+Export.table.toAsset({
+  collection: testResults, 
+  description: 'Test_Results/NINA_ET_best_model_ee_results_no_outliers'
+});
+
+Export.table.toDrive({
+  collection: testResults, 
+  description: 'NINA_ET_best_model_ee_results_no_outliers',
+  folder: 'NINA_ET_test_results',
+  fileFormat: 'CSV'
+});
+
+Export.table.toDrive({
+  collection: ee.FeatureCollection([ee.Feature(null, {'MAD_depth': madDepth, 'MAE_depth': maeDepth, 
+                                                      'MAD_volume': madVolume, 'MAE_volume': maeVolume,
+                                                      'MAE_perc_volume': maePercentVolume,
+                                                      'MAE_perc_depth': maePercentDepth
+  })]), 
+  description: 'NINA_ET_best_model_stats_no_outliers',
+  folder: 'NINA_ET_test_results',
+  fileFormat: 'CSV'
+});
+
+

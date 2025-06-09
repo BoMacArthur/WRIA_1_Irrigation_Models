@@ -1,0 +1,272 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var openEt = ee.ImageCollection("OpenET/ENSEMBLE/CONUS/GRIDMET/MONTHLY/v2_0"),
+    daymet = ee.ImageCollection("NASA/ORNL/DAYMET_V4"),
+    wria1 = ee.FeatureCollection("projects/ee-bomacarthur/assets/wria1Boundary"),
+    etAndPrcpCol = ee.ImageCollection("projects/ee-bomacarthur/assets/etAndPrcp"),
+    fields = ee.FeatureCollection("projects/ee-bomacarthur/assets/WSDA_Fields/wsdaFieldsMonthly");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+
+// Add WRIA 1 Boundary
+Map.addLayer(wria1, {}, 'WRIA 1', false);
+Map.centerObject(wria1, 10);
+print(fields.first().propertyNames());
+
+// Extract native projections and scale from OpenET and Daymet images
+var openEtScale = openEt.first().projection().nominalScale();
+var openEtProjection = openEt.first().projection().crs();
+var daymetScale = daymet.first().projection().nominalScale();
+var daymetProjection = daymet.first().projection();
+
+// Load and sort ET and PRCP Image Collection
+var etAndPrcp = etAndPrcpCol.sort('system:time_start');
+print(etAndPrcp.first());
+
+//////////////////
+// Calulate water balance
+//////////////////
+
+/* Water balance =
+wbA = P*(x) - ETa + wbRn-1*(y) where: 
+  
+  P = Precipitation (mm)
+  ETa = actual ET (mm)
+  wbRn-1 = water balance residual from previous month
+  x = effective precipitation constant
+  y = effective residual constant
+*/
+
+//////////////////
+// Create an Array of possible x y combinations
+//////////////////
+
+var x = ee.Array([0.64, 0.97, 0.28, 0.97, 0.06, 0.43, 0.55, 0.26, 0.14, 0.69, 0.26, 0.05]);
+// print(x.get([0]));
+
+//////////////////
+// Define XY Constants
+//////////////////
+
+var xConstants = ee.FeatureCollection([
+   ee.Feature(null, {'month': 1,  'precipConstant': x.get([0])}),
+   ee.Feature(null, {'month': 2,  'precipConstant': x.get([1])}),
+   ee.Feature(null, {'month': 3,  'precipConstant': x.get([2])}),
+   ee.Feature(null, {'month': 4,  'precipConstant': x.get([3])}),
+   ee.Feature(null, {'month': 5,  'precipConstant': x.get([4])}),
+   ee.Feature(null, {'month': 6,  'precipConstant': x.get([5])}),
+   ee.Feature(null, {'month': 7,  'precipConstant': x.get([6])}),
+   ee.Feature(null, {'month': 8,  'precipConstant': x.get([7])}),
+   ee.Feature(null, {'month': 9,  'precipConstant': x.get([8])}),
+   ee.Feature(null, {'month': 10, 'precipConstant': x.get([9])}),
+   ee.Feature(null, {'month': 11, 'precipConstant': x.get([10])}),
+   ee.Feature(null, {'month': 12, 'precipConstant': x.get([11])})
+  ]);
+  
+var yConstant = 0.39;
+
+//////////////////
+// Create a function to calculate monthly Water Balance while applying monthly Effective precipitaion coefficients
+//////////////////
+var waterBalance = etAndPrcp.filterDate('2011-01-01', '2024-01-01').map(function(image){
+  var month = image.date().get('month');
+  var xValue = xConstants.filter(ee.Filter.eq('month', month)).first().getNumber('precipConstant');
+  var precipEffective = image.select('P').multiply(xValue).rename('Peff');
+  var calculateWaterBalance = precipEffective.subtract(image.select('ETa')).rename('wb'); // Create the new band and rename
+  return image.addBands(precipEffective).addBands(calculateWaterBalance).copyProperties(image, image.propertyNames());
+});
+
+print('water balance', waterBalance);
+
+
+// var waterBalanceTest = waterBalance.filterDate('2018-04-01', '2018-05-01').first();
+// var residualTest = waterBalanceTest.where(waterBalanceTest.lt(0), 0).unmask();
+
+// Map.addLayer(residualTest.clip(wria1), 
+// {bands: 'wb', min:0, max: 150, palette: ['#a6611a','#dfc27d','#f5f5f5','#80cdc1','#018571']}, 
+// 'residual Test', false);
+
+//////////////////
+// Manually add constant 0 'wbAdjusted' band to first image from Dec 2010
+//////////////////
+
+// Create first image from Dec 2010 image of waterBalance collection
+var etAndPrcpFirst = etAndPrcp.filterDate('2010-12-01', '2011-01-01').first();
+var wbFirst = etAndPrcpFirst.addBands(etAndPrcpFirst.select('P').multiply(yConstant)
+                            .subtract(etAndPrcpFirst.select('ETa')).rename('wb'));
+var firstImage = wbFirst.addBands(wbFirst.select('wb').where(wbFirst.select('wb').lt(0), 0).rename('wbRadj'));
+
+// var firstImageMin = firstImage.reduceRegion({
+//   reducer: ee.Reducer.min(), geometry: wria1, scale: 30, crs: openEtProjection, maxPixels: 1e8});
+  
+// print('etAndPrcpFirst', etAndPrcpFirst);
+// print('wbFirst', wbFirst);
+// print('firstImage', firstImage);
+// print('firstImageMin', firstImageMin);
+
+
+//////////////////
+// Add stored water from previous month
+//////////////////
+var addResidualsFunction = function(current, previous){
+  var previousImage = ee.Image(ee.List(previous).get(-1));
+  var currentImage = ee.Image(current);
+  var month = currentImage.date().get('month');
+  var yValue = yConstant;
+  var residualPrevMon = previousImage.select('wbRadj').rename('wbRn1');
+  var residualRatioPrevMon = residualPrevMon.multiply(ee.Image.constant(yValue)).rename('wbRn1Adj');
+  var wbResidualCurMon = currentImage.select('wb').where(currentImage.select('wb').lt(0), 0).unmask().rename('wbR');
+  var wbAdjusted = currentImage.select('wb').add(residualRatioPrevMon).rename('wbA');
+  var residualAdjustedCurMon = wbAdjusted.select('wbA').where(wbAdjusted.select('wbA').lt(0), 0).unmask().rename('wbRadj');
+  
+  var updatedImage = currentImage.addBands(residualPrevMon).addBands(residualRatioPrevMon)
+                                 .addBands(wbResidualCurMon).addBands(wbAdjusted).addBands(residualAdjustedCurMon)
+                                .copyProperties(currentImage, currentImage.propertyNames());
+                
+  return ee.List(previous).add(updatedImage);
+};
+
+var initialList = ee.List([firstImage]);
+// print('initialList', initialList);
+
+var addResiduals = ee.ImageCollection.fromImages(waterBalance.iterate(addResidualsFunction, initialList));
+
+// print('addResiduals', addResiduals);
+// print('Water Balance Projection and Scale', 
+//       addResiduals.first().projection(), 
+//       addResiduals.first().projection().nominalScale());
+
+
+
+//////////////////
+// Zonal Stats
+//////////////////
+
+// print('fields properties', fields.first());
+
+var zonalStats = ee.FeatureCollection(addResiduals.filterDate('2011-01-01', '2024-01-01').map(function(image3){
+  var imageDateStart = image3.date();
+  var imageDateEnd = imageDateStart.advance(1, 'month');
+  var fieldsFiltered = fields.filterDate(imageDateStart, imageDateEnd);
+  var zonalStats = image3.reduceRegions({
+    collection: fieldsFiltered,
+    reducer: ee.Reducer.mean(),
+    scale: 30,
+    crs: openEtProjection,
+    tileScale: 16
+});
+    return zonalStats.map(function(feature){
+      return feature.set({'IrrigationType': feature.getString('Irrigation')})
+                    .select(['Area', 'CropGroup', 'CropType', 'County', 'DataSource', 'DateEnd', 'DateStart', 'ExactAcres', 'ETa', 
+                            'IrrigationType', 'LastSurveyDate', 'P', 'Peff', 'system:time_end', 'system:time_start', 
+                            'wb', 'wbA', 'wbR', 'wbRn1', 'wbRadj', 'wbRn1Adj']);
+    });
+})).flatten();
+
+// print('zonalStats First and size', zonalStats.first(), zonalStats.size());
+
+//////////////////
+// Calculate Model Water Volume
+//////////////////
+
+var nonZeroIrrigation = zonalStats.filter(ee.Filter.lt('wbA', 0));
+var zeroIrrigation = zonalStats.filter(ee.Filter.gte('wbA', 0));
+
+// print('Size of nonZero and zero irrigation', nonZeroIrrigation.size(), zeroIrrigation.size());
+
+var nonZeroIrrigationCol = nonZeroIrrigation.map(function(feature){
+    var etIrrigation = feature.getNumber('wbA');
+    var areaValue = feature.getNumber('Area');
+    return feature.set({'irrigationVolumeM3': etIrrigation.multiply(areaValue).multiply(0.001).abs(),
+                        'irrigationVolume1000Gal': etIrrigation.multiply(areaValue).multiply(0.001).multiply(264.172052).divide(1000).abs(),
+                        'irrigationDepthMM': etIrrigation.abs(),
+                        'irrigationDepthIN': etIrrigation.abs().divide(25.4)})
+      .select(['Area', 'CropGroup', 'CropType', 'County', 'DataSource', 'DateEnd', 'DateStart', 'ExactAcres', 'ETa', 
+               'IrrigationType', 'LastSurveyDate', 'P', 'Peff', 'system:time_end', 'system:time_start', 
+               'wb', 'wbA', 'wbR', 'wbRn1', 'wbRadj', 'wbRn1Adj', 'irrigationVolumeM3', 'irrigationVolume1000Gal',
+               'irrigationDepthMM', 'irrigationDepthIN']);
+  });
+// print('nonZeroIrrigationCol', nonZeroIrrigationCol.first(), nonZeroIrrigationCol.size());
+  
+  var zeroIrrigationCol = zeroIrrigation.map(function(feature){
+    return feature.set({'irrigationVolumeM3': 0,
+                        'irrigationVolume1000Gal': 0,
+                        'irrigationDepthMM': 0,
+                        'irrigationDepthIN': 0})
+      .select(['Area', 'CropGroup', 'CropType', 'County', 'DataSource', 'DateEnd', 'DateStart', 'ExactAcres', 'ETa', 
+               'IrrigationType', 'LastSurveyDate', 'P', 'Peff', 'system:time_end', 'system:time_start', 
+               'wb', 'wbA', 'wbR', 'wbRn1', 'wbRadj', 'wbRn1Adj', 'irrigationVolumeM3', 'irrigationVolume1000Gal',
+               'irrigationDepthMM', 'irrigationDepthIN']);
+  });
+// print('zeroIrrigationCol', zeroIrrigationCol.first(), zeroIrrigationCol.size());
+  
+var results = ee.FeatureCollection([nonZeroIrrigationCol, zeroIrrigationCol])
+                  .flatten().sort('system:time_start');
+
+print(results.first());
+
+//////////////////
+// Export results as asset and to Drive
+//////////////////
+
+Export.table.toAsset({
+  collection: results, 
+  description: 'All_Fields_All_Years/SWBR_13_best_model_results_all_fields'
+});
+
+Export.table.toDrive({
+  collection: results, 
+  description: 'SWBR_13_best_model_results_all_fields',
+  folder: 'WaterBalanceModelResults',
+  fileFormat: 'CSV'
+});
+
+//////////////////
+// Export Water Balance Residuals image collection to asset
+//////////////////
+// var exportAsset = 'waterBalanceResiduals';
+
+// var doExportAsset = function() {
+//   print('Working');
+//   var ids = addResiduals.aggregate_array('system:index');
+//   // evaluate() will not block the UI and once the result is available
+//   // will be passed-on to the callback function where we will call
+//   // Export.image.toAsset()
+//   ids.evaluate(function(imageIds) {
+//     print('Total number of images', imageIds.length);
+//     print('Exporting now... (see Tasks tab)');
+//     print('Tip: Use Ctrl+Click/Cmd+Click on tasks to skip confirmation.');
+//     for(var i = 0; i < imageIds.length; i++) {
+      
+//       // Filter using the image id
+//       var image = ee.Image(addResiduals.toList(1, i).get(0));
+
+//       // Clip image to the geometry
+//       Export.image.toAsset({
+//         image: image,
+//         description: 'waterBalanceResiduals' + i + '_' + imageIds[i],
+//         assetId: exportAsset + '/' + imageIds[i],
+//         region: wria1,
+//         scale: 30,
+//         crs: 'EPSG:32610'
+//       });
+//     }
+//   });
+  
+// };
+
+// print('Click button below to start export to Asset');
+// var button = ui.Button({label: 'Export to Asset', onClick: doExportAsset});
+// print(button);
+
+
+// //////////////////
+// // View water balance images from June 2018 on the map
+// //////////////////
+
+// var wbAdjustedApr2018 = addResiduals.filterDate('2018-04-01', '2018-05-01').first();
+// var wbApr2018 = waterBalance.filterDate('2018-04-01', '2018-05-01').first();
+// Map.addLayer(wbApr2018.clip(wria1), 
+//     {bands: 'wb', min: -30, max: 500, palette: ['#a6611a','#dfc27d','#f5f5f5','#80cdc1','#018571']}, 
+//     'wbApr2018', false); 
+// Map.addLayer(wbAdjustedApr2018.clip(wria1), 
+//     {bands: 'wbAdjusted', min: -30, max: 500,palette: ['#a6611a','#dfc27d','#f5f5f5','#80cdc1','#018571']}, 
+//     'wbAdjustedApr2018', false); 

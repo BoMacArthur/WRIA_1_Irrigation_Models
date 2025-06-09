@@ -1,0 +1,1359 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var naip = ee.ImageCollection("USDA/NAIP/DOQQ"),
+    wria1 = ee.FeatureCollection("projects/ee-bomacarthur/assets/wria1Boundary"),
+    images = ee.ImageCollection("projects/ee-bomacarthur/assets/waterBalanceResiduals"),
+    fields = ee.FeatureCollection("projects/ee-bomacarthur/assets/Irrigation_App_Features/irrigation_app_features");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+print(fields.first().propertyNames());
+var wbImages = images.sort('system:time_start');
+Map.addLayer(wria1.style({fillColor: '00000000'}), {}, 'WRIA 1 Boundary', true);
+
+//////////////////
+// Base map stying
+//////////////////
+var customStyle = [
+    {
+        "featureType": "administrative",
+        "elementType": "labels.text.fill",
+        "stylers": [
+            {
+                "color": "#444444"
+            }
+        ]
+    },
+    {
+        "featureType": "landscape",
+        "elementType": "all",
+        "stylers": [
+            {
+                "color": "#f2f2f2"
+            }
+        ]
+    },
+    {
+        "featureType": "poi",
+        "elementType": "all",
+        "stylers": [
+            {
+                "visibility": "off"
+            }
+        ]
+    },
+    {
+        "featureType": "road",
+        "elementType": "all",
+        "stylers": [
+            {
+                "saturation": -100
+            },
+            {
+                "lightness": 45
+            }
+        ]
+    },
+    {
+        "featureType": "road.highway",
+        "elementType": "all",
+        "stylers": [
+            {
+                "visibility": "simplified"
+            }
+        ]
+    },
+    {
+        "featureType": "road.arterial",
+        "elementType": "labels.icon",
+        "stylers": [
+            {
+                "visibility": "off"
+            }
+        ]
+    },
+    {
+        "featureType": "transit",
+        "elementType": "all",
+        "stylers": [
+            {
+                "visibility": "off"
+            }
+        ]
+    },
+    {
+        "featureType": "water",
+        "elementType": "all",
+        "stylers": [
+            {
+                "color": "#46bcec"
+            },
+            {
+                "visibility": "on"
+            }
+        ]
+    }
+];
+
+Map.setOptions('customStyle', {customStyle: customStyle});
+
+//////////////////
+// App layout
+//////////////////
+
+//////////////////
+// Add panels
+//////////////////
+
+// Create a main panel
+var rightPanel = ui.Panel({
+  style: {width: '505px'}
+});
+// Create a title
+var title = ui.Label({
+  value: 'WRIA 1 Irrigation Estimator',
+  style: {'fontSize': '24px'}
+});
+// Add date selector label
+var dateLabel = ui.Label({
+  value: 'Select a year and month.',
+  style: {'fontSize': '15px'}
+});
+// Add date button Panel
+var dateSelectorPanel = ui.Panel({
+  layout: ui.Panel.Layout.flow('horizontal')
+});
+// Add crop irr selector label
+var cropIrrLabel = ui.Label({
+  value: 'Optionally, select a crop group and/or an irrigation type. Note that some selections result in little or no data.',
+  style: {'fontSize': '15px'}
+});
+// Crop and Irrigation Type selector Panel
+var cropIrrSelectorPanel = ui.Panel({
+  layout: ui.Panel.Layout.flow('horizontal')
+});
+// Add units label
+var unitsLabel = ui.Label({
+  value: 'Select Units',
+  style: {'fontSize': '15px'}
+});
+// Add units panel
+var unitsPanel = ui.Panel({
+  layout: ui.Panel.Layout.flow('horizontal')
+});
+// Display clear map instructions
+var displayClearLabel = ui.Label({
+  value: 'Click the buttons below to add or remove layers from the map.',
+  style: {'fontSize': '15px'}
+});
+// Display Fields and clear button Panel
+var displayClearButtonPanel = ui.Panel({
+  layout: ui.Panel.Layout.flow('horizontal')
+});
+// Display and clear button Panel With label warning
+var displayClearButtonPanelHome = ui.Panel({
+  layout: ui.Panel.Layout.flow('vertical')
+});
+// Null Date label
+var nullDateLabel = ui.Label({
+  value: 'Select a year and month above to display fields on the map.',
+  style: {'fontSize': '15px'}
+});
+// No Fields Label
+var noFieldsLabel = ui.Label({
+  value: '0 Fields. Choose another selection.',
+  style: {'fontSize': '15px'}
+});
+// Display Fields button Panel
+var displayFieldsButtonPanel = ui.Panel({
+  layout: ui.Panel.Layout.flow('horizontal')
+});
+// Add display fields Button Imperial
+var displayFieldsButtonImperial = ui.Button({
+  label: 'Display Fields'
+  });
+// Add display fields Button Metric
+var displayFieldsButtonMetric = ui.Button({
+  label: 'Display Fields'
+  });
+// Add clear map button
+var clearMapButton = ui.Button({
+  label: 'Clear Map',
+  });
+// Add Field View Checkbox
+var fieldViewCheckbox = ui.Checkbox({
+  label: 'Field View', 
+  value: true
+  });
+// Add Raster View Checkbox
+var fieldViewCheckbox = ui.Checkbox({
+  label: 'Raster View', 
+  value: false
+  });
+// Add Metric Checkbox
+var metricCheckbox = ui.Checkbox({
+  label: 'Metric', 
+  value: false
+  });
+// Add Imperial Checkbox
+var imperialCheckbox = ui.Checkbox({
+  label: 'Imperial', 
+  value: true
+  });
+// Add Inspector Instructions
+var inspectorLabel = ui.Label({
+  value: 'Click on a field in the map window to view its properties and generate a time series chart of monthy irrigation for that location.',
+  style: {'fontSize': '15px'}
+});
+// Add inspector instructions panel
+var inspectorPanel = ui.Panel({
+  layout: ui.Panel.Layout.flow('vertical')
+});
+// Field Size Panel
+var fieldsSizePanel = ui.Panel({
+  layout: ui.Panel.Layout.flow('horizontal')
+});
+//Add Properties Panel
+var propertiesPanel = ui.Panel({
+  layout: ui.Panel.Layout.flow('vertical'),
+  style: {stretch: 'vertical'}
+});
+// Add printed Properties
+var propertyText = ui.Label({
+  style: {'fontSize': '15px'}
+});
+// Properties Divider
+var propertiesDivider = ui.Label({
+  value: '==========================================================',
+  style: {'fontSize': '15px'}
+});
+//Add Chart Panel
+var chartPanel = ui.Panel({
+  layout: ui.Panel.Layout.flow('vertical')
+});
+// Chart Button Panel
+var clearChartPanel = ui.Panel({
+  layout: ui.Panel.Layout.flow('horizontal'),
+  style: {stretch: 'horizontal'}
+});
+// Add clear chart button
+var clearChartButton = ui.Button({
+  label: 'Clear Panel'
+  });
+// Add chart instructions
+var chartLabel = ui.Label({
+  value: 'Click on the arrow in the upper right corner of the chart to open it in full screen and download the data as a CSV file.',
+  style: {'fontSize': '15px'}
+});
+// Chart Divider
+var chartDivider = ui.Label({
+  value: '==========================================================',
+  style: {'fontSize': '15px'}
+});
+// Add data source panel
+var dataPanel = ui.Panel({
+  layout: ui.Panel.Layout.flow('vertical'),
+  style: {stretch: 'vertical'}
+});
+// Add legend Panel
+var legendPanel = ui.Panel({
+  layout: ui.Panel.Layout.flow('vertical'),
+  style:{position:'bottom-right', padding:'8px 15px'}
+});
+
+//////////////////
+// Populate selectors and buttons
+//////////////////
+
+// Add Filter Selector Drop downs
+var yearSelector = ui.Select({
+  items: [],
+  placeholder: 'Please wait',
+  disabled: true
+});
+var monthSelector = ui.Select({
+  items: [],
+  placeholder: 'Please wait',
+  disabled: true
+});
+var cropSelector = ui.Select({
+  items: [],
+  placeholder: 'Please wait',
+  disabled: true
+});
+var irrigationSelector = ui.Select({
+  items: [],
+  placeholder: 'Please wait',
+  disabled: true
+});
+
+//////////////////
+// Add elements and configure panels
+//////////////////
+
+// Add widgets to the panel
+dateSelectorPanel.add(yearSelector).add(monthSelector);
+cropIrrSelectorPanel.add(cropSelector).add(irrigationSelector);
+unitsPanel.add(imperialCheckbox).add(metricCheckbox);
+displayClearButtonPanelHome.add(displayClearButtonPanel).add(displayFieldsButtonImperial);
+
+rightPanel.add(title).add(dateLabel).add(dateSelectorPanel).add(cropIrrLabel).add(cropIrrSelectorPanel)
+          .add(unitsLabel).add(unitsPanel)
+          .add(displayClearLabel).add(displayClearButtonPanelHome)
+          .add(inspectorPanel).add(fieldsSizePanel).add(propertiesPanel).add(chartPanel).add(dataPanel);
+
+// chartPanel.add(clearChartButton);
+Map.setCenter(-122.2272, 48.7646, 10);
+Map.style().set('cursor', 'crosshair');
+ui.root.add(rightPanel);
+
+//////////////////
+// App Functions
+//////////////////
+
+// Create a list of years and months
+var years = ee.List.sequence(2011,2023);
+var months = ee.List.sequence(1,12);
+// Convert from lists of numbers to list of strings
+var yearStrings = years.map(function(year){
+  return ee.Number(year).format('%04d');
+});
+var monthStrings = months.map(function(month){
+  return ee.Number(month).format('%02d');
+});
+
+// Crop Group list
+var cropGroups = fields.aggregate_array('Crop_Group').distinct();
+// Irrigation Types List
+var irrigationTypes = ee.List([ee.List(fields.aggregate_array('Irrigation_Type_1')), 
+                               ee.List(fields.aggregate_array('Irrigation_Type_2'))]).flatten().distinct()
+                               .filter(ee.Filter.neq('item', 'N/A'));
+
+// Create callback function to populate year and month dropdowns
+yearStrings.evaluate(function(list){
+  yearSelector.items().reset(list);
+  yearSelector.setPlaceholder('Select a year');
+  yearSelector.setDisabled(false);
+});
+monthStrings.evaluate(function(list){
+  monthSelector.items().reset(list);
+  monthSelector.setPlaceholder('Select a month');
+  monthSelector.setDisabled(false);
+});
+cropGroups.evaluate(function(list){
+  list.sort();
+  list.unshift('All Crop Groups'); // Add empty string as 'None' option
+  cropSelector.items().reset(list);
+  cropSelector.setPlaceholder('Select crop group');
+  cropSelector.setDisabled(false);
+});
+irrigationTypes.evaluate(function(list){
+  list.sort();
+  list.unshift('All Irrigation Types');
+  irrigationSelector.items().reset(list);
+  irrigationSelector.setPlaceholder('Select irrigation type');
+  irrigationSelector.setDisabled(false);
+});
+
+//////////////////
+// Units Checkbox
+//////////////////
+
+imperialCheckbox.onChange(function(checked) {
+  if (!checked) {
+    metricCheckbox.setValue(true);  // Automatically check metric when imperial is unchecked
+    return;
+  }
+
+  if (checked) {
+    metricCheckbox.setValue(false);  // Uncheck metric
+
+    displayClearButtonPanel.clear();
+    displayClearButtonPanelHome.clear();
+    inspectorPanel.clear();
+    propertiesPanel.clear();
+    chartPanel.clear();
+    Map.remove(legendPanel);
+    legendPanel.clear();
+    fieldsSizePanel.clear();
+    Map.layers().reset();
+    Map.addLayer(wria1.style({fillColor: '00000000'}), {}, 'WRIA 1 Boundary', true);
+
+    var year = yearSelector.getValue();
+    var month = monthSelector.getValue();
+    var startDate = ee.Date.fromYMD(ee.Number.parse(year), ee.Number.parse(month), 1);
+    var endDate = startDate.advance(1, 'month');
+    var crop = cropSelector.getValue();
+    var irrigation = irrigationSelector.getValue();
+    var fieldsFiltered = fields.filterDate(startDate, endDate);
+
+    if (crop !== null && crop !== 'All Crop Groups'){
+      fieldsFiltered = fieldsFiltered.filter(ee.Filter.eq('Crop_Group', crop));
+    }
+    if (irrigation !== null && irrigation !== 'All Irrigation Types'){
+      fieldsFiltered = fieldsFiltered.filter(ee.Filter.or(
+        ee.Filter.eq('Irrigation_Type_1', irrigation),
+        ee.Filter.eq('Irrigation_Type_2', irrigation)
+      ));
+    }
+
+    if (year == null || month == null){
+      displayClearButtonPanelHome.add(displayClearButtonPanel).add(nullDateLabel);
+      displayClearButtonPanel.add(displayFieldsButtonImperial);
+      return;
+    }
+
+    fieldsFiltered.size().evaluate(function(number){
+      if (number > 0) {
+        var formattedNumber = number.toLocaleString();
+        var fieldsSizeLabel = ui.Panel({
+          widgets: [ui.Label({
+            value: 'Number of Fields: ' + formattedNumber,
+            style: {fontSize: 14, fontWeight: 'bold'}
+          })],
+          layout: ui.Panel.Layout.flow('horizontal')
+        });
+        fieldsSizePanel.add(fieldsSizeLabel);
+
+        var minimumIN = ee.Number(fieldsFiltered.aggregate_min('Irrigation_depth_inches'));
+        var maximumIN = ee.Number(fieldsFiltered.aggregate_max('Irrigation_depth_inches'));
+        var minMaxDictIN = ee.Dictionary({min: minimumIN, max: maximumIN});
+
+        // Add NAIP layer
+        var naipStart = ee.Date.fromYMD(ee.Number.parse(year), 01, 01);
+        var naipEnd = naipStart.advance(4, 'year');
+        var naipFiltered = naip.filterDate(naipStart, naipEnd).sort('system:time_start', false);
+        var naipLayerName = 'NAIP Imagery ' + year;
+        Map.addLayer(naipFiltered.mosaic().clip(wria1), {min:0, max:200, gamma: 1}, naipLayerName, false);
+
+        minMaxDictIN.evaluate(function(range){
+          var minValue = range.min;
+          var maxValue = range.max;
+          var palette = ['#ffffd9','#edf8b1','#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#253494','#081d58'];
+
+          var zonalVis = (maxValue === 0) ? {
+            min: 0,
+            max: 1,
+            palette: ['#ffffd9', '000000']
+          } : {
+            min: minValue,
+            max: maxValue * 1.05,
+            palette: palette
+          };
+
+          var emptyImage = ee.Image().float();
+          var fillImage = emptyImage.paint(fieldsFiltered, 'Irrigation_depth_inches');
+          var edges = emptyImage.paint(fieldsFiltered, 1, 0.05);
+          var blendedImage = fillImage.visualize(zonalVis).blend(edges.visualize({palette: ['000000'], forceRgbOutput: true}));
+          var layerName = 'WRIA 1 Fields ' + month + '/' + year;
+          Map.addLayer(blendedImage, {opacity: 0.8}, layerName, true, 0.8);
+        });
+
+        minMaxDictIN.evaluate(function(range){
+          var minValue = range.min;
+          var maxValue = range.max;
+          var adjustedMax = (minValue === maxValue) ? minValue + 1 : maxValue;
+          var palette = ['#ffffd9','#edf8b1','#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#253494','#081d58'];
+          var adjustedPalette = (minValue === maxValue) ? [palette[0]] : palette;
+
+          var legendTitle = ui.Label({
+            value: 'Irrigation Depth (in)',
+            style: {fontWeight: 'bold', textAlign: 'center', fontSize: '14px', margin: '0 0 6px 0'}
+          });
+
+          var gradientImage = ee.Image.pixelLonLat()
+            .select('latitude')
+            .unitScale(0, 1)
+            .multiply(maxValue - minValue)
+            .add(minValue);
+          var legendVis = {min: minValue, max: adjustedMax, palette: adjustedPalette};
+
+          var thumbnail = ui.Thumbnail({
+            image: gradientImage.visualize(legendVis),
+            params: {bbox: [0, 0, 0.1, 1], dimensions: '40x100', format: 'png'},
+            style: {stretch: 'vertical'}
+          });
+
+          var labelPanel = ui.Panel({
+            widgets: [
+              ui.Label(adjustedMax.toLocaleString(undefined, {maximumFractionDigits: 2}),
+                {margin: '0px 0px 0px 6px', textAlign: 'top'}),
+              ui.Label('', {stretch: 'both'}),
+              ui.Label(minValue.toLocaleString(undefined, {maximumFractionDigits: 2}),
+                {margin: '0px 0px 0px 6px', textAlign: 'bottom', stretch: 'vertical'})
+            ],
+            layout: ui.Panel.Layout.flow('vertical'),
+            style: {height: '110px', stretch: 'vertical'}
+          });
+          
+          var buildLegend = ui.Panel({
+            widgets: [thumbnail, labelPanel],
+            layout: ui.Panel.Layout.flow('horizontal')
+          });
+
+          legendPanel.add(legendTitle).add(buildLegend);
+          Map.add(legendPanel);
+        });
+
+        inspectorPanel.add(inspectorLabel);
+      } else {
+        fieldsSizePanel.add(noFieldsLabel);
+      }
+
+      displayClearButtonPanelHome.add(displayClearButtonPanel);
+      displayClearButtonPanel.add(displayFieldsButtonImperial).add(clearMapButton);
+    });
+  }
+});
+
+
+metricCheckbox.onChange(function(checked) {
+  if (!checked) {
+    imperialCheckbox.setValue(true);  // Automatically check metric when imperial is unchecked
+    return;
+  }
+
+  if (checked) {
+    Map.addLayer(wria1.style({fillColor: '00000000'}), {}, 'WRIA 1 Boundary', true);
+    imperialCheckbox.setValue(false);  // Uncheck metric
+
+    displayClearButtonPanel.clear();
+    displayClearButtonPanelHome.clear();
+    inspectorPanel.clear();
+    propertiesPanel.clear();
+    chartPanel.clear();
+    Map.remove(legendPanel);
+    legendPanel.clear();
+    fieldsSizePanel.clear();
+    Map.layers().reset();
+    Map.addLayer(wria1.style({fillColor: '00000000'}), {}, 'WRIA 1 Boundary', true);
+
+    var year = yearSelector.getValue();
+    var month = monthSelector.getValue();
+    var startDate = ee.Date.fromYMD(ee.Number.parse(year), ee.Number.parse(month), 1);
+    var endDate = startDate.advance(1, 'month');
+    var crop = cropSelector.getValue();
+    var irrigation = irrigationSelector.getValue();
+    var fieldsFiltered = fields.filterDate(startDate, endDate);
+
+    if (crop !== null && crop !== 'All Crop Groups'){
+      fieldsFiltered = fieldsFiltered.filter(ee.Filter.eq('Crop_Group', crop));
+    }
+    if (irrigation !== null && irrigation !== 'All Irrigation Types'){
+      fieldsFiltered = fieldsFiltered.filter(ee.Filter.or(
+        ee.Filter.eq('Irrigation_Type_1', irrigation),
+        ee.Filter.eq('Irrigation_Type_2', irrigation)
+      ));
+    }
+
+    if (year == null || month == null){
+      displayClearButtonPanelHome.add(displayClearButtonPanel).add(nullDateLabel);
+      displayClearButtonPanel.add(displayFieldsButtonMetric);
+      return;
+    }
+
+    fieldsFiltered.size().evaluate(function(number){
+      if (number > 0) {
+        var formattedNumber = number.toLocaleString();
+        var fieldsSizeLabel = ui.Panel({
+          widgets: [ui.Label({
+            value: 'Number of Fields: ' + formattedNumber,
+            style: {fontSize: 14, fontWeight: 'bold'}
+          })],
+          layout: ui.Panel.Layout.flow('horizontal')
+        });
+        fieldsSizePanel.add(fieldsSizeLabel);
+
+        var minimumMM = ee.Number(fieldsFiltered.aggregate_min('Irrigation_depth_mm'));
+        var maximumMM = ee.Number(fieldsFiltered.aggregate_max('Irrigation_depth_mm'));
+        var minMaxDictMM = ee.Dictionary({min: minimumMM, max: maximumMM});
+
+        // Add NAIP layer
+        var naipStart = ee.Date.fromYMD(ee.Number.parse(year), 01, 01);
+        var naipEnd = naipStart.advance(4, 'year');
+        var naipFiltered = naip.filterDate(naipStart, naipEnd).sort('system:time_start', false);
+        var naipLayerName = 'NAIP Imagery ' + year;
+        Map.addLayer(naipFiltered.mosaic().clip(wria1), {min:0, max:200, gamma: 1}, naipLayerName, false);
+
+        minMaxDictMM.evaluate(function(range){
+          var minValue = range.min;
+          var maxValue = range.max;
+          var palette = ['#ffffd9','#edf8b1','#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#253494','#081d58'];
+
+          var zonalVis = (maxValue === 0) ? {
+            min: 0,
+            max: 1,
+            palette: ['#ffffd9', '000000']
+          } : {
+            min: minValue,
+            max: maxValue * 1.05,
+            palette: palette
+          };
+
+          var emptyImage = ee.Image().float();
+          var fillImage = emptyImage.paint(fieldsFiltered, 'Irrigation_depth_mm');
+          var edges = emptyImage.paint(fieldsFiltered, 1, 0.05);
+          var blendedImage = fillImage.visualize(zonalVis).blend(edges.visualize({palette: ['000000'], forceRgbOutput: true}));
+          var layerName = 'WRIA 1 Fields ' + month + '/' + year;
+          Map.addLayer(blendedImage, {opacity: 0.8}, layerName, true, 0.8);
+        });
+
+        minMaxDictMM.evaluate(function(range){
+          var minValue = range.min;
+          var maxValue = range.max;
+          var adjustedMax = (minValue === maxValue) ? minValue + 1 : maxValue;
+          var palette = ['#ffffd9','#edf8b1','#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#253494','#081d58'];
+          var adjustedPalette = (minValue === maxValue) ? [palette[0]] : palette;
+
+          var legendTitle = ui.Label({
+            value: 'Irrigation Depth (mm)',
+            style: {fontWeight: 'bold', textAlign: 'center', fontSize: '14px', margin: '0 0 6px 0'}
+          });
+
+          var gradientImage = ee.Image.pixelLonLat()
+            .select('latitude')
+            .unitScale(0, 1)
+            .multiply(maxValue - minValue)
+            .add(minValue);
+          var legendVis = {min: minValue, max: adjustedMax, palette: adjustedPalette};
+
+          var thumbnail = ui.Thumbnail({
+            image: gradientImage.visualize(legendVis),
+            params: {bbox: [0, 0, 0.1, 1], dimensions: '40x100', format: 'png'},
+            style: {stretch: 'vertical'}
+          });
+
+          var labelPanel = ui.Panel({
+            widgets: [
+              ui.Label(adjustedMax.toLocaleString(undefined, {maximumFractionDigits: 1}),
+                {margin: '0px 0px 0px 6px', textAlign: 'top'}),
+              ui.Label('', {stretch: 'both'}),
+              ui.Label(minValue.toLocaleString(undefined, {maximumFractionDigits: 1}),
+                {margin: '0px 0px 0px 6px', textAlign: 'bottom', stretch: 'vertical'})
+            ],
+            layout: ui.Panel.Layout.flow('vertical'),
+            style: {height: '110px', stretch: 'vertical'}
+          });
+
+          var buildLegend = ui.Panel({
+            widgets: [thumbnail, labelPanel],
+            layout: ui.Panel.Layout.flow('horizontal')
+          });
+
+          legendPanel.add(legendTitle).add(buildLegend);
+          Map.add(legendPanel);
+        });
+
+        inspectorPanel.add(inspectorLabel);
+      } else {
+        fieldsSizePanel.add(noFieldsLabel);
+      }
+
+      displayClearButtonPanelHome.add(displayClearButtonPanel);
+      displayClearButtonPanel.add(displayFieldsButtonMetric).add(clearMapButton);
+    });
+  }
+});
+
+
+
+//////////////////
+  // Imperial: Define a function to load Fields feature collection 
+//////////////////
+
+var displayFieldsFunctionImperial = function(){
+  displayFieldsButtonPanel.clear();
+  displayClearButtonPanelHome.clear();
+  displayClearButtonPanel.clear();
+  propertiesPanel.clear();
+  inspectorPanel.clear();
+  chartPanel.clear();
+  legendPanel.clear();
+  fieldsSizePanel.clear();
+  Map.layers().reset();
+  Map.remove(legendPanel);
+  Map.addLayer(wria1.style({fillColor: '00000000'}), {}, 'WRIA 1 Boundary', true);
+  
+  // Filter Fields and NAIP by user selected date
+  var year = yearSelector.getValue();
+  var month = monthSelector.getValue();
+  var startDate = ee.Date.fromYMD(ee.Number.parse(year), ee.Number.parse(month), 1);
+  var endDate = startDate.advance(1, 'month');
+  var crop = cropSelector.getValue();
+  var irrigation = irrigationSelector.getValue();
+  var fieldsFiltered = fields.filterDate(startDate, endDate);
+
+  // Optionally filter by crop and irrigation type
+  if (crop !== null && crop !== 'All Crop Groups') {
+    fieldsFiltered = fieldsFiltered.filter(ee.Filter.eq('Crop_Group', crop));
+  }
+  if (irrigation !== null && irrigation !== 'All Irrigation Types') {
+    fieldsFiltered = fieldsFiltered.filter(ee.Filter.or(
+      ee.Filter.eq('Irrigation_Type_1', irrigation),
+      ee.Filter.eq('Irrigation_Type_2', irrigation)
+    ));
+  }
+
+  // If no date is selected, show message and exit
+  if (year == null || month == null) {
+    displayClearButtonPanelHome.add(displayClearButtonPanel).add(nullDateLabel);
+    displayClearButtonPanel.add(displayFieldsButtonImperial);
+    return; // exit early
+  }
+
+  // Evaluate number of fields
+  fieldsFiltered.size().evaluate(function(number){
+    if (number > 0) {
+      var formattedNumber = number.toLocaleString();
+
+      var fieldsSizeLabel = ui.Panel({
+        widgets: [ui.Label({
+          value: 'Number of Fields: ' + formattedNumber,
+          style: {fontSize: 14, fontWeight: 'bold'}
+        })],
+        layout: ui.Panel.Layout.flow('horizontal')
+      });
+      fieldsSizePanel.add(fieldsSizeLabel);
+
+      // Create min max dictionary
+      var minimumIN = ee.Number(fieldsFiltered.aggregate_min('Irrigation_depth_inches'));
+      var maximumIN = ee.Number(fieldsFiltered.aggregate_max('Irrigation_depth_inches'));
+      var minMaxDictIN = ee.Dictionary({min: minimumIN, max: maximumIN});
+
+      // Add NAIP layer
+      var naipStart = ee.Date.fromYMD(ee.Number.parse(year), 01, 01);
+      var naipEnd = naipStart.advance(4, 'year');
+      var naipFiltered = naip.filterDate(naipStart, naipEnd).sort('system:time_start', false);
+      var naipLayerName = 'NAIP Imagery ' + year;
+      Map.addLayer(naipFiltered.mosaic().clip(wria1), {min:0, max:200, gamma: 1}, naipLayerName, false);
+
+      // Add choropleth map
+      var palette = ['#ffffd9','#edf8b1','#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#253494','#081d58'];
+
+      minMaxDictIN.evaluate(function(range){
+        var minValue = range.min;
+        var maxValue = range.max;
+        var zonalVis;
+
+        if (maxValue === 0) {
+          zonalVis = {
+            min: 0,
+            max: 1,
+            palette: ['#ffffd9', '000000']
+          };
+        } else {
+          zonalVis = {
+            min: minValue,
+            max: maxValue * 1.05,
+            palette: palette
+          };
+        }
+
+        var emptyImage = ee.Image().float();
+        var fillImage = emptyImage.paint(fieldsFiltered, 'Irrigation_depth_inches');
+        var edges = emptyImage.paint(fieldsFiltered, 1, 0.05);
+        var blendedImage = fillImage.visualize(zonalVis).blend(edges.visualize({palette: ['000000'], forceRgbOutput: true}));
+        var layerName = 'WRIA 1 Fields ' + month + '/' + year;
+        Map.addLayer(blendedImage, {opacity: 0.8}, layerName, true, 0.8);
+      });
+
+      // Create and add legend
+      minMaxDictIN.evaluate(function(range){
+        var minValue = range.min;
+        var maxValue = range.max;
+        var adjustedMax = (minValue === maxValue) ? minValue + 1 : maxValue;
+        var adjustedPalette = (minValue === maxValue) ? [palette[0]] : palette;
+
+        var legendTitle = ui.Label({
+          value: 'Irrigation Depth (in)',
+          style: {fontWeight: 'bold', textAlign: 'center', fontSize: '14px', margin: '0 0 6px 0'}
+        });
+
+        var gradientImage = ee.Image.pixelLonLat()
+          .select('latitude')
+          .unitScale(0, 1)
+          .multiply(maxValue - minValue)
+          .add(minValue);
+        var legendVis = {min: minValue, max: adjustedMax, palette: adjustedPalette};
+
+        var thumbnail = ui.Thumbnail({
+          image: gradientImage.visualize(legendVis),
+          params: {bbox: [0, 0, 0.1, 1], dimensions: '40x100', format: 'png'},
+          style: {stretch: 'vertical'}
+        });
+
+        var labelPanel = ui.Panel({
+          widgets: [
+            ui.Label(adjustedMax.toLocaleString(undefined, {maximumFractionDigits: 2}), 
+              {margin: '0px 0px 0px 6px', textAlign: 'top'}),
+            ui.Label('', {stretch: 'both'}),
+            ui.Label(minValue.toLocaleString(undefined, {maximumFractionDigits: 2}),
+              {margin: '0px 0px 0px 6px', textAlign: 'bottom'})
+          ],
+          layout: ui.Panel.Layout.flow('vertical'),
+          style: {height: '110px', stretch: 'vertical'}
+        });
+
+        var buildLegend = ui.Panel({
+          widgets: [thumbnail, labelPanel],
+          layout: ui.Panel.Layout.flow('horizontal')
+        });
+
+        legendPanel.add(legendTitle).add(buildLegend);
+        Map.add(legendPanel);
+      });
+
+      inspectorPanel.add(inspectorLabel);
+    } else {
+      fieldsSizePanel.add(noFieldsLabel);
+    }
+
+    // Always show control buttons
+    displayClearButtonPanelHome.add(displayClearButtonPanel);
+    displayClearButtonPanel.add(displayFieldsButtonImperial).add(clearMapButton);
+    inspectorPanel.clear();
+  });
+};
+
+
+
+//////////////////
+  // Metric: Define a function to load Fields feature collection 
+//////////////////
+var displayFieldsFunctionMetric = function(){
+  displayFieldsButtonPanel.clear();
+  displayClearButtonPanelHome.clear();
+  displayClearButtonPanel.clear();
+  propertiesPanel.clear();
+  inspectorPanel.clear();
+  chartPanel.clear();
+  legendPanel.clear();
+  fieldsSizePanel.clear();
+  Map.layers().reset();
+  Map.remove(legendPanel);
+  Map.addLayer(wria1.style({fillColor: '00000000'}), {}, 'WRIA 1 Boundary', true);
+  
+  // Filter Fields and NAIP by user selected date
+  var year = yearSelector.getValue();
+  var month = monthSelector.getValue();
+  var startDate = ee.Date.fromYMD(ee.Number.parse(year), ee.Number.parse(month), 1);
+  var endDate = startDate.advance(1, 'month');
+  var crop = cropSelector.getValue();
+  var irrigation = irrigationSelector.getValue();
+  var fieldsFiltered = fields.filterDate(startDate, endDate);
+
+  // Optionally filter by crop and irrigation type
+  if (crop !== null && crop !== 'All Crop Groups') {
+    fieldsFiltered = fieldsFiltered.filter(ee.Filter.eq('Crop_Group', crop));
+  }
+  if (irrigation !== null && irrigation !== 'All Irrigation Types') {
+    fieldsFiltered = fieldsFiltered.filter(ee.Filter.or(
+      ee.Filter.eq('Irrigation_Type_1', irrigation),
+      ee.Filter.eq('Irrigation_Type_2', irrigation)
+    ));
+  }
+
+  // If no date is selected, show message and exit
+  if (year == null || month == null) {
+    displayClearButtonPanelHome.add(displayClearButtonPanel).add(nullDateLabel);
+    displayClearButtonPanel.add(displayFieldsButtonMetric);
+    return; // exit early
+  }
+
+  // Evaluate number of fields
+  fieldsFiltered.size().evaluate(function(number){
+    if (number > 0) {
+      var formattedNumber = number.toLocaleString();
+
+      var fieldsSizeLabel = ui.Panel({
+        widgets: [ui.Label({
+          value: 'Number of Fields: ' + formattedNumber,
+          style: {fontSize: 14, fontWeight: 'bold'}
+        })],
+        layout: ui.Panel.Layout.flow('horizontal')
+      });
+      fieldsSizePanel.add(fieldsSizeLabel);
+
+      // Create min max dictionary
+      var minimumMM = ee.Number(fieldsFiltered.aggregate_min('Irrigation_depth_mm'));
+      var maximumMM = ee.Number(fieldsFiltered.aggregate_max('Irrigation_depth_mm'));
+      var minMaxDictMM = ee.Dictionary({min: minimumMM, max: maximumMM});
+
+      // Add NAIP layer
+      var naipStart = ee.Date.fromYMD(ee.Number.parse(year), 01, 01);
+      var naipEnd = naipStart.advance(4, 'year');
+      var naipFiltered = naip.filterDate(naipStart, naipEnd).sort('system:time_start', false);
+      var naipLayerName = 'NAIP Imagery ' + year;
+      Map.addLayer(naipFiltered.mosaic().clip(wria1), {min:0, max:200, gamma: 1}, naipLayerName, false);
+
+      // Add choropleth map
+      var palette = ['#ffffd9','#edf8b1','#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#253494','#081d58'];
+
+      minMaxDictMM.evaluate(function(range){
+        var minValue = range.min;
+        var maxValue = range.max;
+        var zonalVis;
+
+        if (maxValue === 0) {
+          zonalVis = {
+            min: 0,
+            max: 1,
+            palette: ['#ffffd9', '000000']
+          };
+        } else {
+          zonalVis = {
+            min: minValue,
+            max: maxValue * 1.05,
+            palette: palette
+          };
+        }
+
+        var emptyImage = ee.Image().float();
+        var fillImage = emptyImage.paint(fieldsFiltered, 'Irrigation_depth_mm');
+        var edges = emptyImage.paint(fieldsFiltered, 1, 0.05);
+        var blendedImage = fillImage.visualize(zonalVis).blend(edges.visualize({palette: ['000000'], forceRgbOutput: true}));
+        var layerName = 'WRIA 1 Fields ' + month + '/' + year;
+        Map.addLayer(blendedImage, {opacity: 0.8}, layerName, true, 0.8);
+      });
+
+      // Create and add legend
+      minMaxDictMM.evaluate(function(range){
+        var minValue = range.min;
+        var maxValue = range.max;
+        var adjustedMax = (minValue === maxValue) ? minValue + 1 : maxValue;
+        var adjustedPalette = (minValue === maxValue) ? [palette[0]] : palette;
+
+        var legendTitle = ui.Label({
+          value: 'Irrigation Depth (mm)',
+          style: {fontWeight: 'bold', textAlign: 'center', fontSize: '14px', margin: '0 0 6px 0'}
+        });
+
+        var gradientImage = ee.Image.pixelLonLat()
+          .select('latitude')
+          .unitScale(0, 1)
+          .multiply(maxValue - minValue)
+          .add(minValue);
+        var legendVis = {min: minValue, max: adjustedMax, palette: adjustedPalette};
+
+        var thumbnail = ui.Thumbnail({
+          image: gradientImage.visualize(legendVis),
+          params: {bbox: [0, 0, 0.1, 1], dimensions: '40x100', format: 'png'},
+          style: {stretch: 'vertical'}
+        });
+
+        var labelPanel = ui.Panel({
+          widgets: [
+            ui.Label(adjustedMax.toLocaleString(undefined, {maximumFractionDigits: 1}), 
+              {margin: '0px 0px 0px 6px', textAlign: 'top'}),
+            ui.Label('', {stretch: 'both'}),
+            ui.Label(minValue.toLocaleString(undefined, {maximumFractionDigits: 1}),
+              {margin: '0px 0px 0px 6px', textAlign: 'bottom'})
+          ],
+          layout: ui.Panel.Layout.flow('vertical'),
+          style: {height: '110px', stretch: 'vertical'}
+        });
+
+        var buildLegend = ui.Panel({
+          widgets: [thumbnail, labelPanel],
+          layout: ui.Panel.Layout.flow('horizontal')
+        });
+
+        legendPanel.add(legendTitle).add(buildLegend);
+        Map.add(legendPanel);
+      });
+      
+      inspectorPanel.add(inspectorLabel);
+    } else {
+      fieldsSizePanel.add(noFieldsLabel);
+      inspectorPanel.clear();
+    }
+
+    // Always show control buttons
+    displayClearButtonPanelHome.add(displayClearButtonPanel);
+    displayClearButtonPanel.add(displayFieldsButtonMetric).add(clearMapButton);
+  });
+};
+
+
+// Apply functions to buttons
+displayFieldsButtonImperial.onClick(displayFieldsFunctionImperial);
+displayFieldsButtonMetric.onClick(displayFieldsFunctionMetric);
+  
+// Configure reset buttons and functions
+var clearMapFunction = function(){
+  Map.layers().reset();
+  legendPanel.clear();
+};
+clearMapButton.onClick(clearMapFunction);
+var clearChartFunction = function(){
+  chartPanel.clear();
+  propertiesPanel.clear();
+};
+  
+clearChartButton.onClick(clearChartFunction);
+
+var highlightLayer = ui.Map.Layer();
+
+// Create time series Chart and view properties when clicking on map
+var fieldsFiltered; // set fields filtered outside of the click function so it is not added to the map
+Map.onClick(function(coords) {
+  // Clear highlighted feature and charts
+  chartPanel.clear();
+  clearChartPanel.clear();
+  propertiesPanel.clear();
+  Map.layers().remove(highlightLayer);
+
+  var point = ee.Geometry.Point([coords.lon, coords.lat]);
+  var fieldsSelected = fields.filterBounds(point).sort('system:time_start');
+
+  // Get field from selected month
+  var year = yearSelector.getValue();
+  var month = monthSelector.getValue();
+  var startDate = ee.Date.fromYMD(ee.Number.parse(year), ee.Number.parse(month), 1);
+  var endDate = startDate.advance(1, 'month');
+  var oneField = ee.Feature(fieldsSelected.filterDate(startDate, endDate).first());
+    // Add highlight
+  oneField.evaluate(function(feature){
+    // Check for units
+    if (imperialCheckbox.getValue() === true) {
+    // Check if the field exists
+      if (feature !== null) {
+        var field = ee.Feature(feature);
+        var highlight = ee.Image().float().paint(field.geometry(), 1)
+          .visualize({palette: ['#64fffc'], opacity: 0.4})
+          .blend(ee.Image().paint(field.geometry(), 1, 2.5)
+          .visualize({palette: ['#64fffc'], forceRgbOutput: true}));
+    
+        highlightLayer.setEeObject(highlight);
+        highlightLayer.setName('Selected Field');
+        Map.layers().add(highlightLayer);
+    
+        // Configure time series chart function
+        var timeSeriesChart = ui.Chart.feature.byFeature({
+          features: fieldsSelected,
+          xProperty: 'system:time_start',
+          yProperties: ['Irrigation_depth_inches']
+        })
+          .setChartType('LineChart')
+          .setOptions({
+            title: 'Monthly Irrigation For Selected Field',
+            titleTextStyle: {bold: true},
+            lineWidth: 2,
+            pointSize: 2.5,
+            series: {
+              0: {color: 'blue', labelInLegend: 'Irrigation', curveType: 'function', fontSize: 12}},
+            hAxis: {
+              title: 'Date',
+              titleTextStyle: {italic: false, bold: true},
+              gridlines: {units: {years: {format: ['yyyy']}}},
+              minorGridlines: {units: {months: {format: ['MMM']}}, count: 0},
+            },
+            vAxis: {
+              title: 'Irrigation Depth (in)',
+              titleTextStyle: {italic: false, bold: true},
+              viewWindow: {min: 0},
+            },
+            legend: {
+              position: 'top-right'
+            }
+          });
+    
+        propertiesPanel.add(propertiesDivider);
+        propertiesPanel.add(clearChartButton);
+    
+        // Print feature properties
+        oneField.select(['Area_acres',
+                         'Crop_Group',
+                         'Crop_Type',
+                         'Date',
+                         'DataSource',
+                         'ET_actual_in',
+                         'Irrigation_depth_inches',
+                         'Irrigation_Type_1',
+                         'Irrigation_Type_2',
+                         'Irrigtion_Volume_1000gal',
+                         'LastSurveyDate',
+                         'Precipitation_in',
+                         'Precipitation_Effective_in'])
+          .evaluate(function(feature) {
+              var propertyDict = feature.properties;
+    
+              // Rename Properties
+              var niceNames = {
+                'Area_acres': 'Area (acres)',
+                'Crop_Group': 'Crop Group',
+                'Crop_Type': 'Crop Type',
+                'Date': 'Date',
+                'DataSource': 'Data Source',
+                'ET_actual_in': 'ET Actual (in)',
+                'Irrigation_depth_inches': 'Irrigation Depth (in)',
+                'Irrigation_Type_1': 'Irrigation Type 1',
+                'Irrigation_Type_2': 'Irrigation Type 2',
+                'Irrigtion_Volume_1000gal': 'Irrigation Volume (1000 gal)',
+                'LastSurveyDate': 'Last Survey Date',
+                'Precipitation_in': 'Precipitation (in)',
+                'Precipitation_Effective_in': 'Precipitation (Effective) (in)'
+              };
+    
+              // Clear previous and add title
+              propertiesPanel.add(ui.Label('Field Properties', {
+                fontWeight: 'bold',
+                fontSize: '15px',
+                margin: '1px 1px 1px 5px'
+              }));
+    
+              // Loop through and display formatted rows
+              Object.keys(propertyDict).forEach(function(key) {
+                var label = niceNames[key] || key;
+                var value = propertyDict[key];
+    
+                // Round numeric values to two decimals
+                if (typeof value === 'number') {
+                  value = value.toFixed(2);
+                }
+                
+                var row = ui.Panel([
+                  ui.Label(label + ':', {width: '137px', fontWeight: 'bold', margin: '1px 1px 1px 15px'}),
+                  ui.Label(String(value), {stretch: 'horizontal', margin: '2px 1px 2px 8px'})
+                ], ui.Panel.Layout.flow('horizontal'), {margin: '2px 1px 2px 0px;'});
+
+    
+                propertiesPanel.add(row);
+              });
+          }); // Closing evaluate for oneField.select([...])
+        chartPanel.add(chartDivider);
+        chartPanel.add(timeSeriesChart);
+        chartPanel.add(chartLabel);
+      } // closing for if statement
+      else {
+        propertiesPanel.add(ui.Label({
+          value: 'Click on a field to view properties and display chart.',
+          style: {fontSize: '14px', fontWeight: 'bold', color: 'gray'}
+        }));
+      }
+    }
+    else {
+      // Check if the field exists
+      if (feature !== null) {
+        var field = ee.Feature(feature);
+        var highlight = ee.Image().float().paint(field.geometry(), 1)
+          .visualize({palette: ['#64fffc'], opacity: 0.4})
+          .blend(ee.Image().paint(field.geometry(), 1, 2.5)
+          .visualize({palette: ['#64fffc'], forceRgbOutput: true}));
+    
+        highlightLayer.setEeObject(highlight);
+        highlightLayer.setName('Selected Field');
+        Map.layers().add(highlightLayer);
+    
+        // Configure time series chart function
+        var timeSeriesChart = ui.Chart.feature.byFeature({
+          features: fieldsSelected,
+          xProperty: 'system:time_start',
+          yProperties: ['Irrigation_depth_mm']
+        })
+          .setChartType('LineChart')
+          .setOptions({
+            title: 'Monthly Irrigation For Selected Field',
+            titleTextStyle: {bold: true},
+            lineWidth: 2,
+            pointSize: 2.5,
+            series: {
+              0: {color: 'blue', labelInLegend: 'Irrigation', curveType: 'function', fontSize: 12}},
+            hAxis: {
+              title: 'Date',
+              titleTextStyle: {italic: false, bold: true},
+              gridlines: {units: {years: {format: ['yyyy']}}},
+              minorGridlines: {units: {months: {format: ['MMM']}}, count: 0},
+            },
+            vAxis: {
+              title: 'Irrigation Depth (mm)',
+              titleTextStyle: {italic: false, bold: true},
+              viewWindow: {min: 0},
+            },
+            legend: {
+              position: 'top-right'
+            }
+          });
+    
+        propertiesPanel.add(propertiesDivider);
+        propertiesPanel.add(clearChartButton);
+    
+        // Print feature properties
+        oneField.select(['Area_sq_meters',
+                         'Crop_Group',
+                         'Crop_Type',
+                         'Date',
+                         'DataSource',
+                         'ET_actual_mm',
+                         'Irrigation_depth_mm',
+                         'Irrigation_Type_1',
+                         'Irrigation_Type_2',
+                         'Irrigtion_Volume_cubic_meters',
+                         'LastSurveyDate',
+                         'Precipitation_mm',
+                         'Precipitation_Effective_mm'])
+          .evaluate(function(feature) {
+              var propertyDict = feature.properties;
+    
+              // Rename Properties
+              var niceNames = {
+                'Area_sq_meters': 'Area (m²)',
+                'Crop_Group': 'Crop Group',
+                'Crop_Type': 'Crop Type',
+                'Date': 'Date',
+                'DataSource': 'Data Source',
+                'ET_actual_mm': 'ET Actual (mm)',
+                'Irrigation_depth_mm': 'Irrigation Depth (mm)',
+                'Irrigation_Type_1': 'Irrigation Type 1',
+                'Irrigation_Type_2': 'Irrigation Type 2',
+                'Irrigtion_Volume_cubic_meters': 'Irrigation Volume (m³)',
+                'LastSurveyDate': 'Last Survey Date',
+                'Precipitation_mm': 'Precipitation (mm)',
+                'Precipitation_Effective_mm': 'Precipitation (Effective) (mm)'
+              };
+    
+              // Clear previous and add title
+              propertiesPanel.add(ui.Label('Field Properties', {
+                fontWeight: 'bold',
+                fontSize: '15px',
+                margin: '1px 1px 1px 5px'
+              }));
+    
+              // Loop through and display formatted rows
+              Object.keys(propertyDict).forEach(function(key) {
+                var label = niceNames[key] || key;
+                var value = propertyDict[key];
+    
+                // Round numeric values to two decimals
+                if (typeof value === 'number') {
+                  value = value.toFixed(2);
+                }
+                
+                var row = ui.Panel([
+                  ui.Label(label + ':', {width: '137px', fontWeight: 'bold', margin: '1px 1px 1px 15px'}),
+                  ui.Label(String(value), {stretch: 'horizontal', margin: '2px 1px 2px 8px'})
+                ], ui.Panel.Layout.flow('horizontal'), {margin: '2px 1px 2px 0px;'});
+    
+                propertiesPanel.add(row);
+              });
+          }); // Closing evaluate for oneField.select([...])
+        chartPanel.add(chartDivider);
+        chartPanel.add(timeSeriesChart);
+        chartPanel.add(chartLabel);
+      } // closing for if statement
+      else {
+        propertiesPanel.add(ui.Label({
+          value: 'Click on a field to view properties and display chart.',
+          style: {fontSize: '14px', fontWeight: 'bold', color: 'gray'}
+        }));
+      }
+    }
+  }); // Closing evaluate for oneField
+});
+
+
+
+
+
+// Data Divider
+var dataDivider = ui.Label({
+  value: '==========================================================',
+  style: {'fontSize': '15px'}
+});
+
+// Function to create reference panel.
+function referencecreate() {
+    var referenceZero = ui.Label({
+        value: 'Data Sources:',
+        style: {
+            color: 'black',
+            fontWeight: 'bold',
+            fontSize: '12px',
+            textAlign: 'center'
+        },
+    });
+    var referenceOne = ui.Label({
+        value: 'Evapotranspiration: OpenET',
+        style: {
+            color: 'black',
+            fontWeight: 'bold',
+            fontSize: '11px',
+            textAlign: 'center',
+            // padding: '0px 0px 4px 0px'
+        },
+        targetUrl: 'https://developers.google.com/earth-engine/datasets/catalog/OpenET_ENSEMBLE_CONUS_GRIDMET_MONTHLY_v2_0'
+    });
+    var referenceTwo = ui.Label({
+        value: 'Field attributes and boundaries: WSDA',
+        style: {
+            color: 'black',
+            fontWeight: 'bold',
+            fontSize: '11px',
+            textAlign: 'center'
+        },
+        targetUrl: 'https://agr.wa.gov/departments/land-and-water/natural-resources/agricultural-land-use'
+    });
+    var referenceThree = ui.Label({
+        value: 'Irrigation Estimates: Bo MacArthur, 2025',
+        style: {
+            color: 'black',
+            fontWeight: 'bold',
+            fontSize: '11px',
+            textAlign: 'center'
+        },
+        targetUrl: 'https://github.com/BoMacArthur/WRIA_1_Irrigation_Models'
+    });
+    var referenceFour = ui.Label({
+        value: 'Precipitation: Daymet V4',
+        style: {
+            color: 'black',
+            fontWeight: 'bold',
+            fontSize: '11px',
+            textAlign: 'center',
+            padding: '0px 0px 0px 0px'
+        },
+        targetUrl: 'https://developers.google.com/earth-engine/datasets/catalog/NASA_ORNL_DAYMET_V4'
+    });
+    var referenceFive = ui.Label({
+    value: 'Satellite Imagery: NAIP',
+    style: {
+        color: 'black',
+        fontWeight: 'bold',
+        fontSize: '11px',
+        textAlign: 'center',
+        padding: '0px 0px 0px 0px'
+        },
+        targetUrl: 'https://developers.google.com/earth-engine/datasets/catalog/USDA_NAIP_DOQQ'
+    });
+    var referenceSix = ui.Label({
+        value: 'Created by:',
+        style: {
+            color: 'black',
+            fontWeight: 'bold',
+            fontSize: '12px',
+            textAlign: 'center'
+        },
+    });
+    var referenceSeven = ui.Label({
+        value: 'Bo MacArthur, 2025',
+        style: {
+            color: 'black',
+            fontWeight: 'bold',
+            fontSize: '11px',
+            textAlign: 'center'
+        },
+        targetUrl: 'https://github.com/BoMacArthur/WRIA_1_Irrigation_Models'
+    });
+    // Add reference to the Data panel.
+    dataPanel.add(dataDivider);
+    dataPanel.add(referenceZero);
+    dataPanel.add(referenceOne);
+    dataPanel.add(referenceTwo);
+    dataPanel.add(referenceThree);
+    dataPanel.add(referenceFour);
+    dataPanel.add(referenceFive);
+    dataPanel.add(referenceSix);
+    dataPanel.add(referenceSeven);
+}
+
+// Call the reference panel creation function.
+referencecreate();
+  
+  

@@ -1,0 +1,193 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var wria1 = ee.FeatureCollection("projects/ee-bomacarthur/assets/wria1Boundary"),
+    daymet = ee.ImageCollection("NASA/ORNL/DAYMET_V4"),
+    allFields = ee.FeatureCollection("projects/ee-bomacarthur/assets/WSDA_Fields/wsdaFieldsMonthly"),
+    openEt = ee.ImageCollection("OpenET/ENSEMBLE/CONUS/GRIDMET/MONTHLY/v2_0"),
+    testFields = ee.FeatureCollection("projects/ee-bomacarthur/assets/Test_Fields/testFieldsMeterDataArea_4_16_update");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+Map.addLayer(wria1, {}, 'WRIA 1 Boundary', true, 0.3);
+Map.addLayer(testFields.sort('date'), {color: 'blue'},'Test Fields with Water Meter Data', true, 0.6);
+Map.centerObject(testFields, 10);
+
+print('~~~~~~ All Fields ~~~~~~~', 
+      'First feature', allFields.first(), 
+      'Property names', allFields.first().propertyNames(), 
+      'Unique irrigation types', allFields.aggregate_array('Irrigation').distinct(),
+      'Unique Dates', allFields.aggregate_array('Date').distinct(),
+      'Number of Fields', allFields.size());
+
+print('~~~~~~ Test Fields ~~~~~~~', 
+      'First feature', testFields.first(), 
+      'Property names', testFields.first().propertyNames(),
+      'Number of Fields', testFields.size());
+
+// var intersectedFields = fields.filterBounds(testFields);
+// print('intersected Fields size', intersectedFields.size());
+
+// Create a list of months and define start date
+var monthList = ee.List.sequence(0,155);
+var startDate = ee.Date('2011-01-01');
+
+//////////////////
+// Create a monthly time series of precipitation
+//////////////////
+
+// Map a function over a list of months to compute monthly precipitation
+var monthlyPrcpCol = ee.ImageCollection.fromImages(monthList.map(function (n) {
+  var start = startDate.advance(n, 'month'); 
+  var end = start.advance(1, 'month'); 
+  var prcpFiltered = daymet.filterDate(start, end)
+                  .filterBounds(wria1)
+                  .select('prcp');
+  var sumPrcp = prcpFiltered.reduce(ee.Reducer.sum()).rename('precipitation'); 
+  
+  return sumPrcp.set({
+    'system:time_start': start.millis(),
+    'system:time_end': end.millis(),
+    'date': start.format('yyyy-MM-dd'),
+    'year': start.get('year'),
+    'month': start.get('month')
+  });
+}
+));
+
+//////////////////
+// Create a monthly time series of Evapotranspiration
+//////////////////
+
+// Map a function over a list of months to compute monthly precipitation
+var monthlyEtCol = ee.ImageCollection.fromImages(monthList.map(function (n) {
+  var start = startDate.advance(n, 'month'); 
+  var end = start.advance(1, 'month'); 
+  var etFiltered = openEt.filter(ee.Filter.date(start, end))
+                        .filterBounds(wria1)
+                        .select('et_ensemble_mad');
+  var sumEt = etFiltered.reduce(ee.Reducer.sum()).rename('et'); 
+  
+  return sumEt.set({
+    'system:time_start': start.millis(),
+    'system:time_end': end.millis(),
+    'date': start.format('yyyy-MM-dd'),
+    'year': start.get('year'),
+    'month': start.get('month')
+  });
+}
+));
+
+//////////////////
+// Resample Precip collection and combine bands with ET images
+//////////////////
+
+// Extract native projections and scale from OpenET and Daymet images
+var openEtScale = openEt.first().projection().nominalScale();
+var openEtProjection = openEt.first().projection().crs();
+var daymetScale = daymet.first().projection().nominalScale();
+var daymetProjection = daymet.first().projection();
+
+// Resample the Precipitation images to match the projection and scale of the ET data
+// Add Et and PRCP bands to the same image
+var etAndPrcp = monthlyPrcpCol.map(function(prcpImage) {
+  // Find the corresponding precipitation image by date
+  var date = prcpImage.date();
+  var etImage = monthlyEtCol.filterDate(date, date.advance(1, 'month')).first();
+
+  // Set default projection and resample prcp band to 30m resolution by using mean reducer
+  var prcpResampled = prcpImage.setDefaultProjection({
+      crs: daymetProjection,
+      scale: daymetScale})
+    .resample('bilinear');
+
+  // Combine ET and Precipitation bands into a single image and set default projection
+  return prcpResampled.addBands(etImage.select('et'))
+                                       .toFloat() // cast both bands to float
+                                      .reproject({ // define output projection
+                                        crs: openEtProjection,
+                                        scale: openEtScale});
+});
+print('etAndPrcp', etAndPrcp.first());
+print('scale', etAndPrcp.first().projection().nominalScale(), 'projection', etAndPrcp.first().projection().crs());
+
+//////////////////
+// Test zonal stats for Test Fields function on one image
+//////////////////
+
+// var testFieldsFiltered = testFields.filterDate('2011-06-01', '2011-07-01');
+// print('testFieldsFiltered', testFieldsFiltered);
+
+// var zonalStatsTest = etAndPrcp.first().reduceRegions({
+//   collection: testFields.filterDate('2011-06-01', '2011-07-01'),
+//   reducer: ee.Reducer.mean(),
+//   scale: 30,
+//   tileScale:4});
+  
+// print('zonalStatsTest', zonalStatsTest);
+
+//////////////////
+// Calculate avg ET and Precip for all TEST Fields
+//////////////////
+
+var testFieldsZonal = ee.FeatureCollection(etAndPrcp.map(function(image){
+  var imageDateStart = image.date();
+  var imageDateEnd = imageDateStart.advance(1, 'month');
+  var fieldsFiltered = testFields.filterDate(imageDateStart, imageDateEnd);
+  var zonalStats = image.reduceRegions({
+    collection: fieldsFiltered,
+    reducer: ee.Reducer.mean(),
+    scale: 30,
+    tileScale: 16
+});
+    
+  return zonalStats.map(function(feature){
+    return feature.select(['area', 'et', 'endDate', 'groupNumber', 'precipitation', 'startDate', 'system:time_end', 
+                          'system:time_start', 'waterMeterVolume']);
+  });
+})).flatten();
+
+// print('test Fields Et and Prcp', testFieldsZonal);
+
+
+//////////////////
+// Test zonal stats for All Fields function on one image
+//////////////////
+
+// var allFieldsFiltered = allFields.filterDate('2011-01-01', '2011-02-01').limit(10);
+// print('allFieldsFiltered', allFieldsFiltered);
+
+// var zonalStatsAll = etAndPrcp.first().reduceRegions({
+//   collection: allFieldsFiltered,
+//   reducer: ee.Reducer.mean(),
+//   scale: 30,
+//   tileScale:4});
+  
+// print('zonalStatsAll', zonalStatsAll);
+
+//////////////////
+// Calculate avg ET and Precip for ALL Fields
+//////////////////
+
+var allFieldsZonal = ee.FeatureCollection(etAndPrcp.map(function(image){
+  var imageDateStart = image.date();
+  var imageDateEnd = imageDateStart.advance(1, 'month');
+  var fieldsFiltered = allFields.filterDate(imageDateStart, imageDateEnd);
+  var zonalStats = image.reduceRegions({
+    collection: fieldsFiltered,
+    reducer: ee.Reducer.mean(),
+    scale: 30,
+    tileScale: 16
+});
+    
+  return zonalStats.map(function(feature){
+    return feature.select(['Area', 'County', 'CropGroup', 'CropType', 'DateEnd', 'DateStart', 'et', 'ExactAces', 'Irrigation', 
+                           'precipitation', 'system:time_end', 'system:time_start']);
+  });
+})).flatten();
+
+// print('All Fields Et and Prcp', allFieldsZonal.filterDate('2011-06-01', '2011-07-01'));
+
+Export.table.toAsset({
+  collection: testFieldsZonal,
+  description: 'testFieldsZonalStats_4_16_update'});
+
+// Export.table.toAsset({
+//   collection: allFieldsZonal,
+//   description: 'allFieldsZonalStats'});
