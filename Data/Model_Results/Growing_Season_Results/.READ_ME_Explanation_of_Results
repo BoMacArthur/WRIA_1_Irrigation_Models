@@ -1,3 +1,3 @@
 The results in this folder are not included in the paper or the results of the study. 
-The results here explore the possibility that the accuracy of the SWBR-13 and NINA-ET models would be changed (improved or worsened) if they were optimized using only data from the growing season.
-There was not a significant difference in accuracy with either model and thus these exploratory results were not included. 
+The results here explore the possibility that the accuracy of the SWBR-13 and NINA-ET models would change (improved or worsened) if they were optimized using only data from the growing season.
+There was not a significant difference in performance (accuracy) with either model and thus these exploratory results were not included. 
